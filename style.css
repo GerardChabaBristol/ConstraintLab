@@ -1,0 +1,415 @@
+:root {
+  --bg: #121417;
+  --surface: #1b1f25;
+  --text: #e9edf3;
+  --muted: #a6b0bf;
+  --border: #343c48;
+  --accent: #5ba7ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Base page styling for the dark prototype theme */
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.app-header,
+.app-main {
+  width: min(960px, 92vw);
+  margin: 0 auto;
+}
+
+.app-header {
+  padding: 2rem 0 1rem;
+}
+
+.app-header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.9rem;
+}
+
+.app-main {
+  padding: 1rem 0 2rem;
+}
+
+/* Transport strip above the workspace (play, BPM, clear) */
+.control-bar {
+  display: flex;
+  align-items: stretch;
+  width: calc(100% - 260px - 1rem);
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+}
+
+.control-segment {
+  display: flex;
+  align-items: center;
+}
+
+.control-segment + .control-segment {
+  border-left: 1px solid var(--border);
+}
+
+.control-play {
+  flex: 0 0 84px;
+  justify-content: center;
+  background: #2a2f38;
+}
+
+.control-bpm {
+  flex: 1 1 auto;
+  background: #222730;
+}
+
+.control-clear {
+  flex: 0 0 170px;
+  background: #222730;
+}
+
+/* Play/pause state icons are toggled by script.js via button classes */
+.playback-toggle-button {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+}
+
+.playback-toggle-button:hover {
+  background: #313844;
+}
+
+.bpm-display {
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0 0 0 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: left;
+}
+
+.bpm-display:hover {
+  background: #2a303a;
+}
+
+.bpm-chevron-area {
+  width: 48px;
+  height: 100%;
+  border-left: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bpm-indicator {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid var(--text);
+  margin-top: 1px;
+}
+
+.clear-button {
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  cursor: pointer;
+}
+
+.clear-button:hover {
+  background: #2a303a;
+}
+
+.clear-icon {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--muted);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.clear-text {
+  letter-spacing: 0.04em;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.icon {
+  position: absolute;
+  display: none;
+}
+
+.icon-play {
+  width: 0;
+  height: 0;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-left: 16px solid var(--text);
+  margin-left: 3px;
+}
+
+.icon-pause {
+  width: 14px;
+  height: 18px;
+  border-left: 4px solid var(--text);
+  border-right: 4px solid var(--text);
+}
+
+.playback-toggle-button.is-play .icon-play {
+  display: block;
+}
+
+.playback-toggle-button.is-pause .icon-pause {
+  display: block;
+}
+
+/* Main workspace row: sequencer surface and constraint card */
+.main-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.content-row {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.sequencer-grid {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  flex: 1;
+  min-height: 220px;
+  padding: 1rem;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Constraint panel keeps all three faders and lock control grouped */
+.constraints-panel {
+  width: 260px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.constraints-title {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.constraints-faders {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* Vertical fader styling with an adjacent 1-5 reference scale */
+.constraint-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+}
+
+.constraint-label {
+  font-size: 0.78rem;
+  color: var(--text);
+  text-align: center;
+}
+
+.constraint-fader-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.constraint-scale {
+  height: 140px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: 0.68rem;
+  color: var(--muted);
+  min-width: 12px;
+}
+
+.constraint-fader {
+  height: 140px;
+  width: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #171b21;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0;
+  position: relative;
+  overflow: visible;
+}
+
+.constraint-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 124px;
+  height: 16px;
+  background: transparent;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  cursor: pointer;
+}
+
+.constraint-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #3a4452;
+  border-radius: 2px;
+}
+
+.constraint-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 20px;
+  border-radius: 5px;
+  background: #d5dbe5;
+  border: 1px solid #0f1217;
+  margin-top: -8px;
+}
+
+.constraint-slider::-moz-range-track {
+  height: 4px;
+  background: #3a4452;
+  border-radius: 2px;
+}
+
+.constraint-slider::-moz-range-thumb {
+  width: 14px;
+  height: 20px;
+  border-radius: 5px;
+  background: #d5dbe5;
+  border: 1px solid #0f1217;
+  cursor: pointer;
+}
+
+.constraint-slider::-moz-range-progress {
+  background: #3a4452;
+  height: 4px;
+}
+
+.constraint-value {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.lock-control {
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.lock-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.lock-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
+/* Lightweight prompt bar for task suggestions during user studies */
+.try-this-bar {
+  margin-top: 1rem;
+  background: #181d24;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.try-this-label {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.try-this-text {
+  color: var(--muted);
+}
+
+/* Small-screen fallback: stack grid and constraints vertically */
+@media (max-width: 760px) {
+  .control-bar {
+    width: 100%;
+  }
+
+  .content-row {
+    flex-direction: column;
+  }
+
+  .constraints-panel {
+    width: 100%;
+  }
+
+  .try-this-bar {
+    flex-wrap: wrap;
+  }
+}

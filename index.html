@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ConstraintLab</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- App heading for the prototype interface -->
+  <header class="app-header">
+    <h1>ConstraintLab</h1>
+  </header>
+
+  <main class="app-main">
+    <section class="sequencer-section" aria-label="Sequencer grid area">
+      <!-- Main interaction area: transport bar plus grid/constraints row -->
+      <div class="main-content">
+        <!-- Connected transport strip (play, BPM display, clear pattern) -->
+        <div class="control-bar">
+          <div class="control-segment control-play">
+            <button
+              id="playbackToggleButton"
+              class="playback-toggle-button is-play"
+              type="button"
+              aria-label="Start playback"
+            >
+              <span class="icon icon-play" aria-hidden="true"></span>
+              <span class="icon icon-pause" aria-hidden="true"></span>
+            </button>
+          </div>
+
+          <div class="control-segment control-bpm">
+            <button id="bpmDisplayButton" class="bpm-display" type="button" aria-label="BPM 90">
+              <span class="bpm-text">BPM: 90</span>
+              <span class="bpm-chevron-area" aria-hidden="true">
+                <span class="bpm-indicator"></span>
+              </span>
+            </button>
+          </div>
+
+          <div class="control-segment control-clear">
+            <button id="clearPatternButton" class="clear-button" type="button" aria-label="Clear pattern">
+              <span class="clear-icon" aria-hidden="true">X</span>
+              <span class="clear-text">CLEAR</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Core workspace: sequencer canvas (left) and constraint controls (right) -->
+        <div class="content-row">
+          <div id="sequencerGrid" class="sequencer-grid" role="region" aria-live="polite">
+            <p>Step grid placeholder: rhythm lanes and steps will appear here.</p>
+          </div>
+
+          <!-- Constraint panel used for controlled rhythm-editing tasks -->
+          <aside id="constraintsPanel" class="constraints-panel" aria-label="Constraints controls">
+            <h2 class="constraints-title">Constraints</h2>
+
+            <!-- Three faders represent the independent constraint dimensions -->
+            <div class="constraints-faders">
+              <div class="constraint-control">
+                <label for="constraintSlider1" class="constraint-label">Constraint 1</label>
+                <div class="constraint-fader-row">
+                  <div class="constraint-scale" aria-hidden="true">
+                    <span>5</span>
+                    <span>4</span>
+                    <span>3</span>
+                    <span>2</span>
+                    <span>1</span>
+                  </div>
+                  <div class="constraint-fader">
+                    <input
+                      id="constraintSlider1"
+                      class="constraint-slider"
+                      type="range"
+                      min="1"
+                      max="5"
+                      step="1"
+                      value="3"
+                    />
+                  </div>
+                </div>
+                <span id="constraintValue1" class="constraint-value constraint-level-value">Level: 3</span>
+              </div>
+
+              <div class="constraint-control">
+                <label for="constraintSlider2" class="constraint-label">Constraint 2</label>
+                <div class="constraint-fader-row">
+                  <div class="constraint-scale" aria-hidden="true">
+                    <span>5</span>
+                    <span>4</span>
+                    <span>3</span>
+                    <span>2</span>
+                    <span>1</span>
+                  </div>
+                  <div class="constraint-fader">
+                    <input
+                      id="constraintSlider2"
+                      class="constraint-slider"
+                      type="range"
+                      min="1"
+                      max="5"
+                      step="1"
+                      value="3"
+                    />
+                  </div>
+                </div>
+                <span id="constraintValue2" class="constraint-value constraint-level-value">Level: 3</span>
+              </div>
+
+              <div class="constraint-control">
+                <label for="constraintSlider3" class="constraint-label">Constraint 3</label>
+                <div class="constraint-fader-row">
+                  <div class="constraint-scale" aria-hidden="true">
+                    <span>5</span>
+                    <span>4</span>
+                    <span>3</span>
+                    <span>2</span>
+                    <span>1</span>
+                  </div>
+                  <div class="constraint-fader">
+                    <input
+                      id="constraintSlider3"
+                      class="constraint-slider"
+                      type="range"
+                      min="1"
+                      max="5"
+                      step="1"
+                      value="3"
+                    />
+                  </div>
+                </div>
+                <span id="constraintValue3" class="constraint-value constraint-level-value">Level: 3</span>
+              </div>
+            </div>
+
+            <!-- Lock option to mirror all three slider values during trials -->
+            <div class="lock-control">
+              <label class="lock-label" for="lock-sliders">
+                <input id="lock-sliders" class="lock-checkbox" type="checkbox" />
+                <span>Lock sliders</span>
+              </label>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- Prompt area for short task suggestions shown during sessions -->
+      <div class="try-this-bar" aria-label="Suggestion">
+        <span class="try-this-label">Try this:</span>
+        <span class="try-this-text">Move one snare hit to a different step.</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
