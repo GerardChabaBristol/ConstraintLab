@@ -22,7 +22,7 @@ body {
 
 .app-header,
 .app-main {
-  width: min(960px, 92vw);
+  width: 95%;
   margin: 0 auto;
 }
 
@@ -221,11 +221,127 @@ body {
   border-radius: 8px;
   flex: 1;
   min-height: 220px;
-  padding: 1rem;
+  padding: 0.75rem;
+  color: var(--text);
+}
+
+/* 3x32 sequencer grid with symbol rows, sizing vars, and 8-step separators */
+.step-sequencer {
+  --row-height: 34px;
+  --label-width: 38px;
+  --step-gap: 0.22rem;
+  --block-divider: 0.48rem;
+  width: 100%;
   display: grid;
-  place-items: center;
+  grid-template-columns: var(--label-width) minmax(0, 1fr);
+  grid-template-rows: repeat(3, var(--row-height)) var(--row-height);
+  column-gap: 0.42rem;
+  row-gap: 0.36rem;
+}
+
+.instrument-label {
+  width: var(--label-width);
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #171c23;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   color: var(--muted);
+  cursor: pointer;
+}
+
+.instrument-label:hover {
+  border-color: #4b5870;
+}
+
+.instrument-label:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.instrument-label svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.instrument--active {
+  border-color: var(--accent);
+  background: #1b2432;
+  color: #cfe5ff;
+}
+
+.step-row,
+.step-numbers {
+  display: flex;
+  align-items: center;
+  gap: var(--step-gap);
+  min-width: 0;
+  height: var(--row-height);
+}
+
+.step-cell {
+  width: calc((100% - (31 * var(--step-gap)) - (3 * var(--block-divider))) / 32);
+  height: var(--row-height);
+  border: 1px solid #2f3744;
+  border-radius: 4px;
+  background: #232a34;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.step-cell:hover {
+  border-color: #4e5d72;
+}
+
+.step-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.step-cell--active {
+  background: var(--accent);
+  border-color: #79b7ff;
+}
+
+.step-cell--block-end {
+  margin-right: var(--block-divider);
+}
+
+.add-instrument-button {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #171c23;
+  color: var(--text);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.add-instrument-button:hover {
+  border-color: var(--accent);
+}
+
+.step-number {
+  width: calc((100% - (31 * var(--step-gap)) - (3 * var(--block-divider))) / 32);
+  flex: 0 0 auto;
   text-align: center;
+  font-size: 0.86rem;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.step-number--block-end {
+  margin-right: var(--block-divider);
 }
 
 /* Constraint panel keeps all three faders and lock control grouped */
@@ -411,5 +527,12 @@ body {
 
   .try-this-bar {
     flex-wrap: wrap;
+  }
+
+  .step-sequencer {
+    --row-height: 26px;
+    --label-width: 30px;
+    --step-gap: 0.14rem;
+    --block-divider: 0.3rem;
   }
 }
