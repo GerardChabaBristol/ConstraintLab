@@ -105,34 +105,34 @@ body {
   padding: 0 0 0 1rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
+  gap: 0.55rem;
+  justify-content: flex-start;
+  cursor: default;
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-align: left;
 }
 
-.bpm-display:hover {
+.bpm-display:focus-within {
   background: #2a303a;
 }
 
-.bpm-chevron-area {
-  width: 48px;
-  height: 100%;
-  border-left: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.bpm-input {
+  width: 58px;
+  background: transparent;
+  border: 1px solid #4a5569;
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 0.1rem 0.3rem;
 }
 
-.bpm-indicator {
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 6px solid var(--text);
-  margin-top: 1px;
+.bpm-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .clear-button {
@@ -309,6 +309,11 @@ body {
 .step-cell--active {
   background: var(--accent);
   border-color: #79b7ff;
+}
+
+.step-cell--playhead {
+  border-color: #8fb8f2;
+  box-shadow: inset 0 0 0 1px rgba(143, 184, 242, 0.35);
 }
 
 .step-cell--block-end {

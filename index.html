@@ -31,12 +31,19 @@
           </div>
 
           <div class="control-segment control-bpm">
-            <button id="bpmDisplayButton" class="bpm-display" type="button" aria-label="BPM 90">
-              <span class="bpm-text">BPM: 90</span>
-              <span class="bpm-chevron-area" aria-hidden="true">
-                <span class="bpm-indicator"></span>
-              </span>
-            </button>
+            <div class="bpm-display" aria-label="Tempo control">
+              <span class="bpm-text">BPM:</span>
+              <input
+                id="bpmInput"
+                class="bpm-input"
+                type="number"
+                min="40"
+                max="240"
+                step="1"
+                value="90"
+                aria-label="BPM value"
+              />
+            </div>
           </div>
 
           <div class="control-segment control-clear">
