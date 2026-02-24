@@ -1,37 +1,60 @@
 document.addEventListener("DOMContentLoaded", () => {
   console.log("ConstraintLab UI initialized.");
 
-  // Transport control and constraint UI elements.
+  // Transport and panel controls already present in the UI.
   const playbackToggleButton = document.getElementById("playbackToggleButton");
+  const bpmInput = document.getElementById("bpmInput");
+  const clearPatternButton = document.getElementById("clearPatternButton");
   const constraintSliders = Array.from(document.querySelectorAll(".constraint-slider"));
   const constraintLevelLabels = Array.from(
     document.querySelectorAll(".constraint-level-value")
   );
   const lockSlidersCheckbox = document.getElementById("lock-sliders");
-  let isPlaying = false;
+  const sequencerMount = document.getElementById("stepSequencer");
 
-  // Simple play/pause UI state toggle (audio engine wiring comes later).
-  if (playbackToggleButton) {
-    playbackToggleButton.addEventListener("click", () => {
-      isPlaying = !isPlaying;
+  // Audio setup: one shared context and one buffer per drum instrument.
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  const audioContext = AudioContextClass ? new AudioContextClass() : null;
+  const drumBuffers = { kick: null, snare: null, hihat: null };
+  const drumSamplePaths = {
+    kick: "assets/audio/kick.wav",
+    snare: "assets/audio/snare.wav",
+    hihat: "assets/audio/hihat.wav",
+  };
+  const instrumentBufferKeys = ["kick", "snare", "hihat"];
 
-      playbackToggleButton.classList.toggle("is-play", !isPlaying);
-      playbackToggleButton.classList.toggle("is-pause", isPlaying);
-      playbackToggleButton.setAttribute(
-        "aria-label",
-        isPlaying ? "Pause playback" : "Start playback"
-      );
+  async function loadDrumBuffer(bufferKey, filePath) {
+    if (!audioContext) return;
 
-      if (isPlaying) {
-        console.log("Playback started.");
-      } else {
-        console.log("Playback stopped.");
-      }
+    try {
+      const response = await fetch(filePath);
+      if (!response.ok) return;
+
+      const audioData = await response.arrayBuffer();
+      drumBuffers[bufferKey] = await audioContext.decodeAudioData(audioData);
+    } catch {
+      // Missing files are acceptable during early prototype setup.
+    }
+  }
+
+  function loadAllDrumBuffers() {
+    Object.entries(drumSamplePaths).forEach(([bufferKey, filePath]) => {
+      loadDrumBuffer(bufferKey, filePath);
     });
   }
 
-  // Basic sequencer scaffold (visual editing only; no playback timing yet).
-  const sequencerMount = document.getElementById("stepSequencer");
+  function playDrum(buffer) {
+    if (!audioContext || !buffer) return;
+
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContext.destination);
+    source.start();
+  }
+
+  loadAllDrumBuffers();
+
+  // Sequencer scaffold and pattern state used by editing and playback.
   const instruments = [
     { name: "Kick" },
     { name: "Snare" },
@@ -41,6 +64,166 @@ document.addEventListener("DOMContentLoaded", () => {
   const pattern = Array.from({ length: instruments.length }, () =>
     Array(stepsPerInstrument).fill(false)
   );
+  const stepCellsByColumn = Array.from({ length: stepsPerInstrument }, () => []);
+  const allStepCells = [];
+
+  let isPlaying = false;
+  let playbackTimerId = null;
+  let currentStepIndex = 0;
+  let previousStepIndex = -1;
+
+  function setPlaybackButtonState(playing) {
+    if (!playbackToggleButton) return;
+
+    playbackToggleButton.classList.toggle("is-play", !playing);
+    playbackToggleButton.classList.toggle("is-pause", playing);
+    playbackToggleButton.setAttribute(
+      "aria-label",
+      playing ? "Pause playback" : "Start playback"
+    );
+  }
+
+  function readCurrentBpm() {
+    if (!bpmInput) return 90;
+
+    const parsedBpm = Number(bpmInput.value);
+    if (!Number.isFinite(parsedBpm)) return 90;
+    return Math.min(240, Math.max(40, parsedBpm));
+  }
+
+  function getStepIntervalMs() {
+    const bpm = readCurrentBpm();
+    const secondsPerSixteenth = (60 / bpm) / 4;
+    return secondsPerSixteenth * 1000;
+  }
+
+  // Rebuild the step timer so live BPM edits apply while playback is running.
+  function restartPlaybackTimer() {
+    if (!isPlaying) return;
+
+    if (playbackTimerId !== null) {
+      window.clearInterval(playbackTimerId);
+    }
+
+    playbackTimerId = window.setInterval(sequencerTick, getStepIntervalMs());
+  }
+
+  function clearPlayhead() {
+    if (previousStepIndex < 0) return;
+
+    stepCellsByColumn[previousStepIndex].forEach((cell) => {
+      cell.classList.remove("step-cell--playhead");
+    });
+
+    previousStepIndex = -1;
+  }
+
+  function setPlayhead(stepIndex) {
+    clearPlayhead();
+
+    stepCellsByColumn[stepIndex].forEach((cell) => {
+      cell.classList.add("step-cell--playhead");
+    });
+
+    previousStepIndex = stepIndex;
+  }
+
+  // Timing loop: advance one step, trigger matching active cells, repeat.
+  function sequencerTick() {
+    setPlayhead(currentStepIndex);
+
+    instruments.forEach((_, instrumentIndex) => {
+      if (!pattern[instrumentIndex][currentStepIndex]) return;
+
+      const bufferKey = instrumentBufferKeys[instrumentIndex];
+      playDrum(drumBuffers[bufferKey]);
+    });
+
+    currentStepIndex = (currentStepIndex + 1) % stepsPerInstrument;
+  }
+
+  async function startPlayback() {
+    if (isPlaying) return;
+
+    isPlaying = true;
+    setPlaybackButtonState(true);
+
+    if (audioContext && audioContext.state === "suspended") {
+      try {
+        await audioContext.resume();
+      } catch {
+        // If resume fails, keep UI responsive and continue silently.
+      }
+    }
+
+    currentStepIndex = 0;
+    sequencerTick();
+    playbackTimerId = window.setInterval(sequencerTick, getStepIntervalMs());
+  }
+
+  function stopPlayback() {
+    if (!isPlaying) return;
+
+    isPlaying = false;
+    setPlaybackButtonState(false);
+
+    if (playbackTimerId !== null) {
+      window.clearInterval(playbackTimerId);
+      playbackTimerId = null;
+    }
+
+    clearPlayhead();
+  }
+
+  function togglePlayback() {
+    if (isPlaying) {
+      stopPlayback();
+      return;
+    }
+
+    startPlayback();
+  }
+
+  if (playbackToggleButton) {
+    playbackToggleButton.addEventListener("click", togglePlayback);
+  }
+
+  // Clamp and normalize BPM input, then sync the running timer if needed.
+  function commitBpmInputValue() {
+    const clampedBpm = readCurrentBpm();
+    bpmInput.value = String(Math.round(clampedBpm));
+    restartPlaybackTimer();
+  }
+
+  if (bpmInput) {
+    bpmInput.addEventListener("change", commitBpmInputValue);
+    bpmInput.addEventListener("blur", commitBpmInputValue);
+    bpmInput.addEventListener("input", restartPlaybackTimer);
+  }
+
+  // Global transport shortcut: space toggles play/pause and avoids grid button activation.
+  document.addEventListener("keydown", (event) => {
+    const isSpace = event.key === " " || event.code === "Space";
+    if (!isSpace) return;
+
+    const target = event.target;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      (target instanceof HTMLElement && target.isContentEditable)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    togglePlayback();
+  });
+
+  function auditionInstrument(instrumentIndex) {
+    const bufferKey = instrumentBufferKeys[instrumentIndex];
+    playDrum(drumBuffers[bufferKey]);
+  }
 
   if (sequencerMount) {
     const instrumentButtons = [];
@@ -96,7 +279,10 @@ document.addEventListener("DOMContentLoaded", () => {
       label.setAttribute("aria-label", instrument.name);
       label.setAttribute("aria-pressed", "false");
       label.innerHTML = symbolMarkup(instrument.name);
-      label.addEventListener("click", () => setActiveInstrument(instrumentIndex));
+      label.addEventListener("click", () => {
+        setActiveInstrument(instrumentIndex);
+        auditionInstrument(instrumentIndex);
+      });
       instrumentButtons.push(label);
       return label;
     }
@@ -119,8 +305,14 @@ document.addEventListener("DOMContentLoaded", () => {
         const isActive = pattern[instrumentIndex][stepIndex];
         stepButton.classList.toggle("step-cell--active", isActive);
         stepButton.setAttribute("aria-pressed", String(isActive));
+
+        if (isActive) {
+          auditionInstrument(instrumentIndex);
+        }
       });
 
+      stepCellsByColumn[stepIndex].push(stepButton);
+      allStepCells.push(stepButton);
       return stepButton;
     }
 
@@ -161,6 +353,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
     sequencerMount.appendChild(numberRow);
     setActiveInstrument(0);
+  }
+
+  if (clearPatternButton) {
+    clearPatternButton.addEventListener("click", () => {
+      pattern.forEach((row) => row.fill(false));
+
+      allStepCells.forEach((cell) => {
+        cell.classList.remove("step-cell--active", "step-cell--playhead");
+        cell.setAttribute("aria-pressed", "false");
+      });
+
+      previousStepIndex = -1;
+    });
   }
 
   // Keep each fader's displayed level in sync with its current value.
