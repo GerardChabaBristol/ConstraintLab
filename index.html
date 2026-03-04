@@ -43,6 +43,26 @@
                 value="90"
                 aria-label="BPM value"
               />
+              <button
+                id="metronomeToggleButton"
+                class="metronome-toggle-button"
+                type="button"
+                aria-label="Enable metronome"
+                aria-pressed="false"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9.4 4.5h5.2l3.6 13.8H5.8z"></path>
+                  <path d="M12 8.4v6.7"></path>
+                  <path d="M10.1 11.7l3.8-1.8"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="control-segment control-try">
+            <div class="try-inline" aria-label="Suggestion">
+              <span class="try-inline-label">Try this:</span>
+              <span id="try-this-text" class="try-inline-text">Move one snare hit to a different step.</span>
             </div>
           </div>
 
@@ -59,105 +79,171 @@
           <div id="sequencerGrid" class="sequencer-grid" role="region" aria-live="polite">
             <div id="stepSequencer" class="step-sequencer" aria-label="Step sequencer"></div>
           </div>
-
-          <!-- Constraint panel used for controlled rhythm-editing tasks -->
-          <aside id="constraintsPanel" class="constraints-panel" aria-label="Constraints controls">
-            <h2 class="constraints-title">Constraints</h2>
-
-            <!-- Three faders represent the independent constraint dimensions -->
-            <div class="constraints-faders">
-              <div class="constraint-control">
-                <label for="constraintSlider1" class="constraint-label">Constraint 1</label>
-                <div class="constraint-fader-row">
-                  <div class="constraint-scale" aria-hidden="true">
-                    <span>5</span>
-                    <span>4</span>
-                    <span>3</span>
-                    <span>2</span>
-                    <span>1</span>
-                  </div>
-                  <div class="constraint-fader">
-                    <input
-                      id="constraintSlider1"
-                      class="constraint-slider"
-                      type="range"
-                      min="1"
-                      max="5"
-                      step="1"
-                      value="3"
-                    />
-                  </div>
-                </div>
-                <span id="constraintValue1" class="constraint-value constraint-level-value">Level: 3</span>
-              </div>
-
-              <div class="constraint-control">
-                <label for="constraintSlider2" class="constraint-label">Constraint 2</label>
-                <div class="constraint-fader-row">
-                  <div class="constraint-scale" aria-hidden="true">
-                    <span>5</span>
-                    <span>4</span>
-                    <span>3</span>
-                    <span>2</span>
-                    <span>1</span>
-                  </div>
-                  <div class="constraint-fader">
-                    <input
-                      id="constraintSlider2"
-                      class="constraint-slider"
-                      type="range"
-                      min="1"
-                      max="5"
-                      step="1"
-                      value="3"
-                    />
-                  </div>
-                </div>
-                <span id="constraintValue2" class="constraint-value constraint-level-value">Level: 3</span>
-              </div>
-
-              <div class="constraint-control">
-                <label for="constraintSlider3" class="constraint-label">Constraint 3</label>
-                <div class="constraint-fader-row">
-                  <div class="constraint-scale" aria-hidden="true">
-                    <span>5</span>
-                    <span>4</span>
-                    <span>3</span>
-                    <span>2</span>
-                    <span>1</span>
-                  </div>
-                  <div class="constraint-fader">
-                    <input
-                      id="constraintSlider3"
-                      class="constraint-slider"
-                      type="range"
-                      min="1"
-                      max="5"
-                      step="1"
-                      value="3"
-                    />
-                  </div>
-                </div>
-                <span id="constraintValue3" class="constraint-value constraint-level-value">Level: 3</span>
-              </div>
-            </div>
-
-            <!-- Lock option to mirror all three slider values during trials -->
-            <div class="lock-control">
-              <label class="lock-label" for="lock-sliders">
-                <input id="lock-sliders" class="lock-checkbox" type="checkbox" />
-                <span>Lock sliders</span>
-              </label>
-            </div>
-          </aside>
         </div>
       </div>
 
-      <!-- Prompt area for short task suggestions shown during sessions -->
-      <div class="try-this-bar" aria-label="Suggestion">
-        <span class="try-this-label">Try this:</span>
-        <span class="try-this-text">Move one snare hit to a different step.</span>
-      </div>
+      <aside id="constraintsPanel" class="constraints-panel constraints-panel-bottom" aria-label="Constraints controls">
+        <h2 class="constraints-title">Constraints</h2>
+
+        <div class="constraints-faders">
+          <div class="constraint-control">
+            <label for="constraintSlider1" class="constraint-label">Loop Length</label>
+            <div class="constraint-fader-row">
+              <div class="constraint-scale" aria-hidden="true">
+                <span>5</span>
+                <span>4</span>
+                <span>3</span>
+                <span>2</span>
+                <span>1</span>
+              </div>
+              <div class="constraint-fader">
+                <input
+                  id="constraintSlider1"
+                  class="constraint-slider"
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value="3"
+                />
+              </div>
+            </div>
+            <span id="constraintValue1" class="constraint-value constraint-level-value">Level: 3</span>
+          </div>
+
+          <div class="constraint-control">
+            <label for="constraintSlider2" class="constraint-label">Grid Resolution</label>
+            <div class="constraint-fader-row">
+              <div class="constraint-scale" aria-hidden="true">
+                <span>5</span>
+                <span>4</span>
+                <span>3</span>
+                <span>2</span>
+                <span>1</span>
+              </div>
+              <div class="constraint-fader">
+                <input
+                  id="constraintSlider2"
+                  class="constraint-slider"
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value="3"
+                />
+              </div>
+            </div>
+            <span id="constraintValue2" class="constraint-value constraint-level-value">Level: 3</span>
+          </div>
+
+          <div class="constraint-control">
+            <label for="constraintSlider3" class="constraint-label">Density</label>
+            <div class="constraint-fader-row">
+              <div class="constraint-scale" aria-hidden="true">
+                <span>5</span>
+                <span>4</span>
+                <span>3</span>
+                <span>2</span>
+                <span>1</span>
+              </div>
+              <div class="constraint-fader">
+                <input
+                  id="constraintSlider3"
+                  class="constraint-slider"
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value="3"
+                />
+              </div>
+            </div>
+            <span id="constraintValue3" class="constraint-value constraint-level-value">Level: 3</span>
+          </div>
+
+          <div class="constraint-control">
+            <label for="constraintSlider4" class="constraint-label">Kit Size</label>
+            <div class="constraint-fader-row">
+              <div class="constraint-scale" aria-hidden="true">
+                <span>5</span>
+                <span>4</span>
+                <span>3</span>
+                <span>2</span>
+                <span>1</span>
+              </div>
+              <div class="constraint-fader">
+                <input
+                  id="constraintSlider4"
+                  class="constraint-slider"
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value="3"
+                />
+              </div>
+            </div>
+            <span id="constraintValue4" class="constraint-value constraint-level-value">Level: 3</span>
+          </div>
+
+          <div class="constraint-control">
+            <label for="constraintSlider5" class="constraint-label">Guidance</label>
+            <div class="constraint-fader-row">
+              <div class="constraint-scale" aria-hidden="true">
+                <span>5</span>
+                <span>4</span>
+                <span>3</span>
+                <span>2</span>
+                <span>1</span>
+              </div>
+              <div class="constraint-fader">
+                <input
+                  id="constraintSlider5"
+                  class="constraint-slider"
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value="3"
+                />
+              </div>
+            </div>
+            <span id="constraintValue5" class="constraint-value constraint-level-value">Level: 3</span>
+          </div>
+
+          <div class="constraint-control">
+            <label for="constraintSlider6" class="constraint-label">Repetition</label>
+            <div class="constraint-fader-row">
+              <div class="constraint-scale" aria-hidden="true">
+                <span>5</span>
+                <span>4</span>
+                <span>3</span>
+                <span>2</span>
+                <span>1</span>
+              </div>
+              <div class="constraint-fader">
+                <input
+                  id="constraintSlider6"
+                  class="constraint-slider"
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value="3"
+                />
+              </div>
+            </div>
+            <span id="constraintValue6" class="constraint-value constraint-level-value">Level: 3</span>
+          </div>
+        </div>
+
+        <div class="lock-control">
+          <label class="lock-label" for="lock-sliders">
+            <input id="lock-sliders" class="lock-checkbox" type="checkbox" />
+            <span>Lock sliders</span>
+          </label>
+        </div>
+      </aside>
     </section>
   </main>
 
