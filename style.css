@@ -417,6 +417,30 @@ body {
   border-color: rgba(121, 183, 255, 0.45);
 }
 
+.step-cell--over-limit-removable {
+  box-shadow: inset 0 0 0 1px rgba(255, 184, 92, 0.55);
+  border-color: rgba(255, 184, 92, 0.75);
+}
+
+.step-cell--blocked {
+  animation: blocked-step-pulse 0.26s ease;
+}
+
+@keyframes blocked-step-pulse {
+  0% {
+    box-shadow: inset 0 0 0 0 rgba(255, 138, 138, 0);
+    border-color: #2f3744;
+  }
+  45% {
+    box-shadow: inset 0 0 0 1px rgba(255, 138, 138, 0.45);
+    border-color: rgba(255, 138, 138, 0.75);
+  }
+  100% {
+    box-shadow: inset 0 0 0 0 rgba(255, 138, 138, 0);
+    border-color: #2f3744;
+  }
+}
+
 .step-cell--block-end {
   margin-right: var(--block-divider);
 }
@@ -527,7 +551,7 @@ body {
   color: var(--text);
   font-size: 0.67rem;
   line-height: 1.25;
-  white-space: normal;
+  white-space: pre-line;
   width: max-content;
   max-width: 220px;
   opacity: 0;
