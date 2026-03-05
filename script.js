@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const bpmInput = document.getElementById("bpmInput");
   const metronomeToggleButton = document.getElementById("metronomeToggleButton");
   const clearPatternButton = document.getElementById("clearPatternButton");
+  const resetConstraintsButton = document.getElementById("resetConstraintsButton");
   const constraintSliders = Array.from(document.querySelectorAll(".constraint-slider"));
   const constraintLevelLabels = Array.from(
     document.querySelectorAll(".constraint-level-value")
@@ -52,7 +53,12 @@ document.addEventListener("DOMContentLoaded", () => {
     openhat: "assets/audio/openhat.wav",
   };
   const instrumentBufferKeys = ["kick", "snare", "hihat", "perc", "openhat"];
-  const PATTERN_STORAGE_KEY = "constraintlab.pattern.v1";
+  const PATTERN_STORAGE_KEY = "constraintlab.pattern";
+  const CONSTRAINT_STORAGE_KEY = "constraintlab.constraints";
+  const LOOP_LENGTH_OPTIONS = [8, 16, 32];
+  const LOOP_LENGTH_SLIDER_INDEX = 0;
+  const KIT_SIZE_OPTIONS = [3, 4, 5];
+  const KIT_SIZE_SLIDER_INDEX = 3;
 
   Object.entries(instrumentGainNodes).forEach(([instrumentKey, gainNode]) => {
     if (!gainNode) return;
@@ -108,18 +114,30 @@ document.addEventListener("DOMContentLoaded", () => {
     { name: "Perc" },
     { name: "Open-hat" },
   ];
+  const instrumentTooltips = {
+    Kick: "Kick - the low drum that provides the main pulse of the beat.",
+    Snare: "Snare - a sharp drum sound that adds impact and rhythm to a beat.",
+    "Hi-hat": "Hi-hat - a short, crisp cymbal sound often used to keep the rhythm moving.",
+    Perc: "Percussion - a small rhythmic accent used to add groove and variation.",
+    "Open-hat": "Open hi-hat - a longer cymbal sound that adds energy and movement.",
+  };
   const stepsPerInstrument = 32;
   const pattern = Array.from({ length: instruments.length }, () =>
     Array(stepsPerInstrument).fill(false)
   );
   const stepCellsByColumn = Array.from({ length: stepsPerInstrument }, () => []);
+  const stepCellsByInstrument = Array.from({ length: instruments.length }, () => []);
   const allStepCells = [];
+  const stepNumberElements = [];
+  const instrumentButtons = [];
 
   let isPlaying = false;
   let playbackTimerId = null;
   let currentStepIndex = 0;
   let previousStepIndex = -1;
   let isMetronomeOn = false;
+  let loopLength = 8;
+  let kitSize = 3;
 
   // Persist only the step matrix so edits survive reloads until the user clears them.
   function savePatternToStorage() {
@@ -151,6 +169,46 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   loadPatternFromStorage();
+
+  function saveConstraintValuesToStorage() {
+    try {
+      const sliderState = {};
+      constraintSliders.forEach((slider) => {
+        if (!slider.id) return;
+        sliderState[slider.id] = slider.value;
+      });
+      window.localStorage.setItem(CONSTRAINT_STORAGE_KEY, JSON.stringify(sliderState));
+    } catch {
+      // Ignore storage write failures and keep controls usable.
+    }
+  }
+
+  function loadConstraintValuesFromStorage() {
+    try {
+      const rawState = window.localStorage.getItem(CONSTRAINT_STORAGE_KEY);
+      if (!rawState) return;
+
+      const parsedState = JSON.parse(rawState);
+      if (!parsedState || typeof parsedState !== "object") return;
+
+      constraintSliders.forEach((slider) => {
+        if (!slider.id) return;
+
+        const savedValue = parsedState[slider.id];
+        if (savedValue === undefined) return;
+
+        const min = Number(slider.min);
+        const max = Number(slider.max);
+        const numericValue = Number(savedValue);
+        if (!Number.isFinite(numericValue)) return;
+
+        const clampedValue = Math.min(max, Math.max(min, numericValue));
+        slider.value = String(clampedValue);
+      });
+    } catch {
+      // Ignore invalid saved data and keep default slider values.
+    }
+  }
 
   function setPlaybackButtonState(playing) {
     if (!playbackToggleButton) return;
@@ -249,13 +307,14 @@ document.addEventListener("DOMContentLoaded", () => {
     setPlayhead(currentStepIndex);
 
     instruments.forEach((_, instrumentIndex) => {
+      if (instrumentIndex >= kitSize) return;
       if (!pattern[instrumentIndex][currentStepIndex]) return;
 
       const bufferKey = instrumentBufferKeys[instrumentIndex];
       playDrum(drumBuffers[bufferKey], instrumentGainNodes[bufferKey], tickTime);
     });
 
-    currentStepIndex = (currentStepIndex + 1) % stepsPerInstrument;
+    currentStepIndex = (currentStepIndex + 1) % loopLength;
   }
 
   async function startPlayback() {
@@ -331,8 +390,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!isSpace) return;
 
     const target = document.activeElement;
+    if (target instanceof HTMLInputElement && target.type !== "range") {
+      return;
+    }
+
     if (
-      target instanceof HTMLInputElement ||
       target instanceof HTMLTextAreaElement ||
       target instanceof HTMLSelectElement ||
       (target instanceof HTMLElement && target.isContentEditable)
@@ -341,20 +403,82 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     event.preventDefault();
-    if (target instanceof HTMLElement && target.classList.contains("step-cell")) {
+    if (
+      target instanceof HTMLElement &&
+      (target.classList.contains("step-cell") || target.classList.contains("constraint-slider"))
+    ) {
       target.blur();
     }
     togglePlayback();
   });
 
   function auditionInstrument(instrumentIndex) {
+    if (instrumentIndex >= kitSize) return;
     const bufferKey = instrumentBufferKeys[instrumentIndex];
     playDrum(drumBuffers[bufferKey], instrumentGainNodes[bufferKey]);
   }
 
-  if (sequencerMount) {
-    const instrumentButtons = [];
+  function readLoopLengthFromSliderValue(sliderValue) {
+    const sliderIndex = Math.max(1, Math.min(3, Number(sliderValue)));
+    return LOOP_LENGTH_OPTIONS[sliderIndex - 1];
+  }
 
+  function updateLoopLengthState() {
+    const loopSlider = constraintSliders[LOOP_LENGTH_SLIDER_INDEX];
+    if (!loopSlider) return;
+
+    loopLength = readLoopLengthFromSliderValue(loopSlider.value);
+
+    allStepCells.forEach((cell) => {
+      const stepIndex = Number(cell.dataset.step);
+      const instrumentIndex = Number(cell.dataset.instrument);
+      const isStepLocked = stepIndex >= loopLength;
+      const isRowLocked = instrumentIndex >= kitSize;
+      cell.classList.toggle("step-cell--locked", isStepLocked);
+      cell.setAttribute("aria-disabled", String(isStepLocked || isRowLocked));
+    });
+
+    stepNumberElements.forEach((numberElement, stepIndex) => {
+      numberElement.classList.toggle("step-number--locked", stepIndex >= loopLength);
+    });
+
+    if (currentStepIndex >= loopLength) {
+      clearPlayhead();
+      currentStepIndex = 0;
+    }
+  }
+
+  function readKitSizeFromSliderValue(sliderValue) {
+    const sliderIndex = Math.max(1, Math.min(3, Number(sliderValue)));
+    return KIT_SIZE_OPTIONS[sliderIndex - 1];
+  }
+
+  function updateKitSizeState() {
+    const kitSlider = constraintSliders[KIT_SIZE_SLIDER_INDEX];
+    if (!kitSlider) return;
+
+    kitSize = readKitSizeFromSliderValue(kitSlider.value);
+
+    instrumentButtons.forEach((button, instrumentIndex) => {
+      const isLocked = instrumentIndex >= kitSize;
+      button.classList.toggle("instrument-label--locked", isLocked);
+      if (isLocked) {
+        button.classList.remove("instrument--active");
+        button.setAttribute("aria-pressed", "false");
+      }
+      button.setAttribute("aria-disabled", String(isLocked));
+    });
+
+    stepCellsByInstrument.forEach((rowCells, instrumentIndex) => {
+      const isLocked = instrumentIndex >= kitSize;
+      rowCells.forEach((cell) => {
+        cell.classList.toggle("step-cell--row-locked", isLocked);
+        cell.setAttribute("aria-disabled", String(isLocked || Number(cell.dataset.step) >= loopLength));
+      });
+    });
+  }
+
+  if (sequencerMount) {
     // Mark the end of each 4-step block for visual grouping only.
     function isBlockEnd(stepIndex) {
       return (stepIndex + 1) % 4 === 0 && stepIndex !== stepsPerInstrument - 1;
@@ -423,11 +547,13 @@ document.addEventListener("DOMContentLoaded", () => {
     function createInstrumentLabel(instrument, instrumentIndex) {
       const label = document.createElement("button");
       label.type = "button";
-      label.className = "instrument-label";
+      label.className = "instrument-label has-tooltip";
       label.setAttribute("aria-label", instrument.name);
       label.setAttribute("aria-pressed", "false");
+      label.setAttribute("data-tooltip", instrumentTooltips[instrument.name] || instrument.name);
       label.innerHTML = symbolMarkup(instrument.name);
       label.addEventListener("click", () => {
+        if (instrumentIndex >= kitSize) return;
         setActiveInstrument(instrumentIndex);
         auditionInstrument(instrumentIndex);
       });
@@ -454,6 +580,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       stepButton.addEventListener("click", () => {
+        if (stepIndex >= loopLength || instrumentIndex >= kitSize) return;
+
         pattern[instrumentIndex][stepIndex] = !pattern[instrumentIndex][stepIndex];
         const isActive = pattern[instrumentIndex][stepIndex];
         stepButton.classList.toggle("step-cell--active", isActive);
@@ -466,6 +594,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       stepCellsByColumn[stepIndex].push(stepButton);
+      stepCellsByInstrument[instrumentIndex].push(stepButton);
       allStepCells.push(stepButton);
       return stepButton;
     }
@@ -500,6 +629,7 @@ document.addEventListener("DOMContentLoaded", () => {
         stepNumber.classList.add("step-number--block-end");
       }
 
+      stepNumberElements.push(stepNumber);
       numberRow.appendChild(stepNumber);
     }
 
@@ -525,6 +655,17 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateSliderLabel(index, value) {
     const valueLabel = constraintLevelLabels[index];
     if (!valueLabel) return;
+
+    if (index === LOOP_LENGTH_SLIDER_INDEX) {
+      valueLabel.textContent = `Loop: ${readLoopLengthFromSliderValue(value)}`;
+      return;
+    }
+
+    if (index === KIT_SIZE_SLIDER_INDEX) {
+      valueLabel.textContent = `Kit: ${readKitSizeFromSliderValue(value)}`;
+      return;
+    }
+
     valueLabel.textContent = `Level: ${value}`;
   }
 
@@ -532,21 +673,50 @@ document.addEventListener("DOMContentLoaded", () => {
   function setAllSliderValues(value) {
     constraintSliders.forEach((slider, index) => {
       slider.value = value;
-      updateSliderLabel(index, value);
+      updateSliderLabel(index, slider.value);
     });
   }
 
-  // Per-slider input handling: independent updates, or mirrored updates when locked.
+  // Per-slider input handling: update labels, apply loop/kit locking, and persist values.
+  loadConstraintValuesFromStorage();
+
   constraintSliders.forEach((slider, index) => {
     updateSliderLabel(index, slider.value);
 
     slider.addEventListener("input", () => {
       if (lockSlidersCheckbox.checked) {
         setAllSliderValues(slider.value);
+        updateLoopLengthState();
+        updateKitSizeState();
+        saveConstraintValuesToStorage();
         return;
       }
 
       updateSliderLabel(index, slider.value);
+      if (index === LOOP_LENGTH_SLIDER_INDEX) {
+        updateLoopLengthState();
+      }
+      if (index === KIT_SIZE_SLIDER_INDEX) {
+        updateKitSizeState();
+      }
+      saveConstraintValuesToStorage();
     });
   });
+
+  if (resetConstraintsButton) {
+    resetConstraintsButton.addEventListener("click", () => {
+      constraintSliders.forEach((slider, index) => {
+        slider.value = slider.defaultValue;
+        updateSliderLabel(index, slider.value);
+      });
+
+      updateLoopLengthState();
+      updateKitSizeState();
+      saveConstraintValuesToStorage();
+    });
+  }
+
+  updateLoopLengthState();
+  updateKitSizeState();
 });
+

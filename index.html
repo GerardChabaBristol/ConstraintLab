@@ -45,10 +45,11 @@
               />
               <button
                 id="metronomeToggleButton"
-                class="metronome-toggle-button"
+                class="metronome-toggle-button has-tooltip"
                 type="button"
                 aria-label="Enable metronome"
                 aria-pressed="false"
+                data-tooltip="Metronome"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M9.4 4.5h5.2l3.6 13.8H5.8z"></path>
@@ -87,14 +88,16 @@
 
         <div class="constraints-faders">
           <div class="constraint-control">
-            <label for="constraintSlider1" class="constraint-label">Loop Length</label>
+            <label
+              for="constraintSlider1"
+              class="constraint-label constraint-label--help"
+              data-tooltip="Controls how many steps the loop plays before repeating."
+            >Loop Length</label>
             <div class="constraint-fader-row">
               <div class="constraint-scale" aria-hidden="true">
-                <span>5</span>
-                <span>4</span>
-                <span>3</span>
-                <span>2</span>
-                <span>1</span>
+                <span title="Full 32-step loop">32</span>
+                <span title="Repeats after step 16">16</span>
+                <span title="Repeats after step 8">8</span>
               </div>
               <div class="constraint-fader">
                 <input
@@ -102,13 +105,13 @@
                   class="constraint-slider"
                   type="range"
                   min="1"
-                  max="5"
+                  max="3"
                   step="1"
-                  value="3"
+                  value="1"
                 />
               </div>
             </div>
-            <span id="constraintValue1" class="constraint-value constraint-level-value">Level: 3</span>
+            <span id="constraintValue1" class="constraint-value constraint-level-value">Loop: 8</span>
           </div>
 
           <div class="constraint-control">
@@ -162,14 +165,16 @@
           </div>
 
           <div class="constraint-control">
-            <label for="constraintSlider4" class="constraint-label">Kit Size</label>
+            <label
+              for="constraintSlider4"
+              class="constraint-label constraint-label--help"
+              data-tooltip="Limits how many instruments can be used in the pattern."
+            >Kit Size</label>
             <div class="constraint-fader-row">
               <div class="constraint-scale" aria-hidden="true">
-                <span>5</span>
-                <span>4</span>
-                <span>3</span>
-                <span>2</span>
-                <span>1</span>
+                <span title="All instruments available.">5</span>
+                <span title="First 4 instruments are available.">4</span>
+                <span title="Only the first 3 instruments are available.">3</span>
               </div>
               <div class="constraint-fader">
                 <input
@@ -177,13 +182,13 @@
                   class="constraint-slider"
                   type="range"
                   min="1"
-                  max="5"
+                  max="3"
                   step="1"
-                  value="3"
+                  value="1"
                 />
               </div>
             </div>
-            <span id="constraintValue4" class="constraint-value constraint-level-value">Level: 3</span>
+            <span id="constraintValue4" class="constraint-value constraint-level-value">Kit: 3</span>
           </div>
 
           <div class="constraint-control">
@@ -242,6 +247,9 @@
             <input id="lock-sliders" class="lock-checkbox" type="checkbox" />
             <span>Lock sliders</span>
           </label>
+          <button id="resetConstraintsButton" class="constraints-reset-button" type="button">
+            Reset Defaults
+          </button>
         </div>
       </aside>
     </section>
