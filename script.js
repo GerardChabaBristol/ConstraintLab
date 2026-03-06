@@ -745,7 +745,7 @@ document.addEventListener("DOMContentLoaded", () => {
             triggerBlockedStepFeedback(stepButton);
             showTemporaryTryMessage(
               `Over density limit (${compliance.maxHits} max). Remove hits to add new ones.`,
-              1500
+              3000
             );
             return;
           }
@@ -754,7 +754,7 @@ document.addEventListener("DOMContentLoaded", () => {
             triggerBlockedStepFeedback(stepButton);
             showTemporaryTryMessage(
               `Density limit reached (${compliance.maxHits} max). Remove a hit to add another.`,
-              1500
+              3000
             );
             return;
           }
