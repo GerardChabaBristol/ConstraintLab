@@ -17,10 +17,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const metronomeToggleButton = document.getElementById("metronomeToggleButton");
   const clearPatternButton = document.getElementById("clearPatternButton");
   const resetConstraintsButton = document.getElementById("resetConstraintsButton");
+  const tryThisText = document.getElementById("try-this-text");
+  const baseTryThisMessage = tryThisText ? tryThisText.textContent : "";
   const constraintSliders = Array.from(document.querySelectorAll(".constraint-slider"));
   const constraintLevelLabels = Array.from(
     document.querySelectorAll(".constraint-level-value")
   );
+  const densityScaleLabels = Array.from(document.querySelectorAll("[data-density-level]"));
   const lockSlidersCheckbox = document.getElementById("lock-sliders");
   const sequencerMount = document.getElementById("stepSequencer");
 
@@ -59,6 +62,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const LOOP_LENGTH_SLIDER_INDEX = 0;
   const KIT_SIZE_OPTIONS = [3, 4, 5];
   const KIT_SIZE_SLIDER_INDEX = 3;
+  const DENSITY_LEVELS = ["sparse", "moderate", "dense", "free"];
+  const DENSITY_SLIDER_INDEX = 2;
 
   Object.entries(instrumentGainNodes).forEach(([instrumentKey, gainNode]) => {
     if (!gainNode) return;
@@ -138,6 +143,13 @@ document.addEventListener("DOMContentLoaded", () => {
   let isMetronomeOn = false;
   let loopLength = 8;
   let kitSize = 3;
+  let densityLevel = "moderate";
+  let isOverDensityLimit = false;
+  let overDensityCount = 0;
+  let overDensityMaxHits = 0;
+  let overDensityOverBy = 0;
+  let tryThisMessageTimeoutId = null;
+  let persistentTryMessage = baseTryThisMessage;
 
   // Persist only the step matrix so edits survive reloads until the user clears them.
   function savePatternToStorage() {
@@ -405,7 +417,11 @@ document.addEventListener("DOMContentLoaded", () => {
     event.preventDefault();
     if (
       target instanceof HTMLElement &&
-      (target.classList.contains("step-cell") || target.classList.contains("constraint-slider"))
+      (
+        target.classList.contains("step-cell") ||
+        target.classList.contains("constraint-slider") ||
+        target.classList.contains("instrument-label")
+      )
     ) {
       target.blur();
     }
@@ -446,6 +462,8 @@ document.addEventListener("DOMContentLoaded", () => {
       clearPlayhead();
       currentStepIndex = 0;
     }
+
+    updateDensityState();
   }
 
   function readKitSizeFromSliderValue(sliderValue) {
@@ -475,6 +493,144 @@ document.addEventListener("DOMContentLoaded", () => {
         cell.classList.toggle("step-cell--row-locked", isLocked);
         cell.setAttribute("aria-disabled", String(isLocked || Number(cell.dataset.step) >= loopLength));
       });
+    });
+
+    updateDensityState();
+  }
+
+  function readDensityLevelFromSliderValue(sliderValue) {
+    const sliderIndex = Math.max(1, Math.min(4, Number(sliderValue)));
+    return DENSITY_LEVELS[sliderIndex - 1];
+  }
+
+  function computeMaxHits(activeSteps, level) {
+    if (level === "free") return null;
+    if (level === "sparse") return Math.max(3, Math.ceil(activeSteps * 0.35));
+    if (level === "moderate") return Math.max(6, Math.ceil(activeSteps * 0.55));
+    return Math.max(10, Math.ceil(activeSteps * 0.8));
+  }
+
+  function countActiveHitsInEditableRegion() {
+    let count = 0;
+    for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
+      for (let stepIndex = 0; stepIndex < loopLength; stepIndex += 1) {
+        if (pattern[instrumentIndex][stepIndex]) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  }
+
+  function getDensityComplianceState() {
+    const activeSteps = loopLength;
+    const computedMaxHits = computeMaxHits(activeSteps, densityLevel);
+    const maxHits = computedMaxHits === null ? Number.POSITIVE_INFINITY : computedMaxHits;
+    const hitCount = countActiveHitsInEditableRegion();
+    const isOverLimit = Number.isFinite(maxHits) && hitCount > maxHits;
+    const overBy = isOverLimit ? hitCount - maxHits : 0;
+
+    return { activeSteps, maxHits, hitCount, isOverLimit, overBy };
+  }
+
+  function getDensityPolicyText(activeSteps, level) {
+    if (level === "free") {
+      return "No hit limit.";
+    }
+
+    const maxHits = computeMaxHits(activeSteps, level);
+    const levelName = level.charAt(0).toUpperCase() + level.slice(1);
+    return `${levelName} density: max ${maxHits} hits (current loop length: ${activeSteps}-step loop).`;
+  }
+
+  function getDensityScaleTooltipText(level) {
+    const meaning = {
+      sparse: "Fewer hits, more space.",
+      moderate: "Balanced hit density.",
+      dense: "More hits, tighter rhythm.",
+      free: "No hit limit.",
+    };
+
+    if (level === "free") {
+      return "No hit limit.";
+    }
+
+    const policyText = getDensityPolicyText(loopLength, level).replace(/^[^:]+:\s*/, "Here: ");
+    return `${meaning[level]}\n\n${policyText}`;
+  }
+
+  function showTemporaryTryMessage(message, durationMs = 1500) {
+    if (!tryThisText) return;
+
+    tryThisText.textContent = message;
+
+    if (tryThisMessageTimeoutId !== null) {
+      window.clearTimeout(tryThisMessageTimeoutId);
+    }
+
+    tryThisMessageTimeoutId = window.setTimeout(() => {
+      tryThisText.textContent = persistentTryMessage;
+      tryThisMessageTimeoutId = null;
+    }, durationMs);
+  }
+
+  function triggerBlockedStepFeedback(stepCell) {
+    stepCell.classList.remove("step-cell--blocked");
+    void stepCell.offsetWidth;
+    stepCell.classList.add("step-cell--blocked");
+
+    window.setTimeout(() => {
+      stepCell.classList.remove("step-cell--blocked");
+    }, 280);
+  }
+
+  function updateDensityState() {
+    const densitySlider = constraintSliders[DENSITY_SLIDER_INDEX];
+    if (!densitySlider) return;
+
+    densityLevel = readDensityLevelFromSliderValue(densitySlider.value);
+
+    densityScaleLabels.forEach((label) => {
+      const level = label.dataset.densityLevel;
+      if (!level) return;
+
+      const tooltipText = getDensityScaleTooltipText(level);
+      label.setAttribute("title", tooltipText);
+      label.removeAttribute("data-tooltip");
+    });
+
+    const compliance = getDensityComplianceState();
+    isOverDensityLimit = compliance.isOverLimit;
+    overDensityCount = compliance.hitCount;
+    overDensityMaxHits = Number.isFinite(compliance.maxHits) ? compliance.maxHits : 0;
+    overDensityOverBy = compliance.overBy;
+
+    if (isOverDensityLimit) {
+      const nextMessage = `Over density limit: ${overDensityCount} hits in steps 1-${compliance.activeSteps} (max ${overDensityMaxHits}). Remove ${overDensityOverBy} hits to continue adding.`;
+      if (persistentTryMessage !== nextMessage) {
+        persistentTryMessage = nextMessage;
+        if (tryThisText && tryThisMessageTimeoutId === null) {
+          tryThisText.textContent = persistentTryMessage;
+        }
+      }
+    } else {
+      if (persistentTryMessage !== baseTryThisMessage) {
+        persistentTryMessage = baseTryThisMessage;
+        if (tryThisText && tryThisMessageTimeoutId === null) {
+          tryThisText.textContent = persistentTryMessage;
+        }
+      }
+    }
+
+    allStepCells.forEach((cell) => {
+      const instrumentIndex = Number(cell.dataset.instrument);
+      const stepIndex = Number(cell.dataset.step);
+      const isActive = pattern[instrumentIndex][stepIndex];
+      const inActiveRegion = instrumentIndex < kitSize && stepIndex < loopLength;
+      cell.classList.toggle(
+        "step-cell--over-limit-removable",
+        isOverDensityLimit && isActive && inActiveRegion
+      );
     });
   }
 
@@ -582,11 +738,34 @@ document.addEventListener("DOMContentLoaded", () => {
       stepButton.addEventListener("click", () => {
         if (stepIndex >= loopLength || instrumentIndex >= kitSize) return;
 
-        pattern[instrumentIndex][stepIndex] = !pattern[instrumentIndex][stepIndex];
+        const isCurrentlyActive = pattern[instrumentIndex][stepIndex];
+        if (!isCurrentlyActive) {
+          const compliance = getDensityComplianceState();
+          if (compliance.isOverLimit) {
+            triggerBlockedStepFeedback(stepButton);
+            showTemporaryTryMessage(
+              `Over density limit (${compliance.maxHits} max). Remove hits to add new ones.`,
+              3000
+            );
+            return;
+          }
+
+          if (Number.isFinite(compliance.maxHits) && compliance.hitCount >= compliance.maxHits) {
+            triggerBlockedStepFeedback(stepButton);
+            showTemporaryTryMessage(
+              `Density limit reached (${compliance.maxHits} max). Remove a hit to add another.`,
+              3000
+            );
+            return;
+          }
+        }
+
+        pattern[instrumentIndex][stepIndex] = !isCurrentlyActive;
         const isActive = pattern[instrumentIndex][stepIndex];
         stepButton.classList.toggle("step-cell--active", isActive);
         stepButton.setAttribute("aria-pressed", String(isActive));
         savePatternToStorage();
+        updateDensityState();
 
         if (isActive) {
           auditionInstrument(instrumentIndex);
@@ -648,6 +827,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       previousStepIndex = -1;
       savePatternToStorage();
+      updateDensityState();
     });
   }
 
@@ -663,6 +843,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (index === KIT_SIZE_SLIDER_INDEX) {
       valueLabel.textContent = `Kit: ${readKitSizeFromSliderValue(value)}`;
+      return;
+    }
+
+    if (index === DENSITY_SLIDER_INDEX) {
+      const level = readDensityLevelFromSliderValue(value);
+      valueLabel.textContent = `Density: ${level.charAt(0).toUpperCase() + level.slice(1)}`;
       return;
     }
 
@@ -698,6 +884,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (index === KIT_SIZE_SLIDER_INDEX) {
         updateKitSizeState();
+      }
+      if (index === DENSITY_SLIDER_INDEX) {
+        updateDensityState();
       }
       saveConstraintValuesToStorage();
     });

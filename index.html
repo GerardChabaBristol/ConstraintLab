@@ -63,7 +63,7 @@
           <div class="control-segment control-try">
             <div class="try-inline" aria-label="Suggestion">
               <span class="try-inline-label">Try this:</span>
-              <span id="try-this-text" class="try-inline-text">Move one snare hit to a different step.</span>
+              <span id="try-this-text" class="try-inline-text"></span>
             </div>
           </div>
 
@@ -140,14 +140,17 @@
           </div>
 
           <div class="constraint-control">
-            <label for="constraintSlider3" class="constraint-label">Density</label>
+            <label
+              for="constraintSlider3"
+              class="constraint-label constraint-label--help"
+              data-tooltip="Controls how many total hits you can place in the pattern (across all instruments)."
+            >Density</label>
             <div class="constraint-fader-row">
               <div class="constraint-scale" aria-hidden="true">
-                <span>5</span>
-                <span>4</span>
-                <span>3</span>
-                <span>2</span>
-                <span>1</span>
+                <span class="constraint-scale-value" data-density-level="free">Free</span>
+                <span class="constraint-scale-value" data-density-level="dense">Dense</span>
+                <span class="constraint-scale-value" data-density-level="moderate">Moderate</span>
+                <span class="constraint-scale-value" data-density-level="sparse">Sparse</span>
               </div>
               <div class="constraint-fader">
                 <input
@@ -155,13 +158,13 @@
                   class="constraint-slider"
                   type="range"
                   min="1"
-                  max="5"
+                  max="4"
                   step="1"
-                  value="3"
+                  value="1"
                 />
               </div>
             </div>
-            <span id="constraintValue3" class="constraint-value constraint-level-value">Level: 3</span>
+            <span id="constraintValue3" class="constraint-value constraint-level-value">Density: Sparse</span>
           </div>
 
           <div class="constraint-control">
