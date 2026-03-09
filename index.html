@@ -115,14 +115,16 @@
           </div>
 
           <div class="constraint-control">
-            <label for="constraintSlider2" class="constraint-label">Grid Resolution</label>
+            <label
+              for="constraintSlider2"
+              class="constraint-label constraint-label--help"
+              data-tooltip="Controls how many step positions are available for note placement."
+            >Grid Resolution</label>
             <div class="constraint-fader-row">
               <div class="constraint-scale" aria-hidden="true">
-                <span>5</span>
-                <span>4</span>
-                <span>3</span>
-                <span>2</span>
-                <span>1</span>
+                <span title="All step positions are available.">Fine</span>
+                <span title="Every 2nd step position is available.">Medium</span>
+                <span title="Every 4th step position is available.">Coarse</span>
               </div>
               <div class="constraint-fader">
                 <input
@@ -130,20 +132,20 @@
                   class="constraint-slider"
                   type="range"
                   min="1"
-                  max="5"
+                  max="3"
                   step="1"
                   value="3"
                 />
               </div>
             </div>
-            <span id="constraintValue2" class="constraint-value constraint-level-value">Level: 3</span>
+            <span id="constraintValue2" class="constraint-value constraint-level-value">Grid: Fine</span>
           </div>
 
           <div class="constraint-control">
             <label
               for="constraintSlider3"
               class="constraint-label constraint-label--help"
-              data-tooltip="Controls how many total hits you can place in the pattern (across all instruments)."
+              data-tooltip="Controls how many total hits you can place in the pattern (across all instruments). The number of max hits is relative to the selected Loop Length."
             >Density</label>
             <div class="constraint-fader-row">
               <div class="constraint-scale" aria-hidden="true">
@@ -160,11 +162,11 @@
                   min="1"
                   max="4"
                   step="1"
-                  value="1"
+                  value="4"
                 />
               </div>
             </div>
-            <span id="constraintValue3" class="constraint-value constraint-level-value">Density: Sparse</span>
+            <span id="constraintValue3" class="constraint-value constraint-level-value">Density: Free</span>
           </div>
 
           <div class="constraint-control">
