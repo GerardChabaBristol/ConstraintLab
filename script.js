@@ -60,6 +60,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const CONSTRAINT_STORAGE_KEY = "constraintlab.constraints";
   const LOOP_LENGTH_OPTIONS = [8, 16, 32];
   const LOOP_LENGTH_SLIDER_INDEX = 0;
+  const GRID_RESOLUTION_OPTIONS = ["coarse", "medium", "fine"];
+  const GRID_RESOLUTION_SLIDER_INDEX = 1;
   const KIT_SIZE_OPTIONS = [3, 4, 5];
   const KIT_SIZE_SLIDER_INDEX = 3;
   const DENSITY_LEVELS = ["sparse", "moderate", "dense", "free"];
@@ -142,12 +144,10 @@ document.addEventListener("DOMContentLoaded", () => {
   let previousStepIndex = -1;
   let isMetronomeOn = false;
   let loopLength = 8;
+  let gridResolutionLevel = "fine";
   let kitSize = 3;
   let densityLevel = "moderate";
   let isOverDensityLimit = false;
-  let overDensityCount = 0;
-  let overDensityMaxHits = 0;
-  let overDensityOverBy = 0;
   let tryThisMessageTimeoutId = null;
   let persistentTryMessage = baseTryThisMessage;
 
@@ -320,6 +320,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     instruments.forEach((_, instrumentIndex) => {
       if (instrumentIndex >= kitSize) return;
+      if (!isStepAllowedByGridResolution(currentStepIndex)) return;
       if (!pattern[instrumentIndex][currentStepIndex]) return;
 
       const bufferKey = instrumentBufferKeys[instrumentIndex];
@@ -439,30 +440,62 @@ document.addEventListener("DOMContentLoaded", () => {
     return LOOP_LENGTH_OPTIONS[sliderIndex - 1];
   }
 
+  function readGridResolutionFromSliderValue(sliderValue) {
+    const sliderIndex = Math.max(1, Math.min(3, Number(sliderValue)));
+    return GRID_RESOLUTION_OPTIONS[sliderIndex - 1];
+  }
+
+  function isStepAllowedByGridResolution(stepIndex) {
+    const stepNumber = stepIndex + 1;
+
+    if (gridResolutionLevel === "fine") return true;
+    if (gridResolutionLevel === "medium") return (stepNumber - 1) % 2 === 0;
+    return (stepNumber - 1) % 4 === 0;
+  }
+
+  function refreshStepAvailabilityState() {
+    allStepCells.forEach((cell) => {
+      const stepIndex = Number(cell.dataset.step);
+      const instrumentIndex = Number(cell.dataset.instrument);
+      const isStepLocked = stepIndex >= loopLength;
+      const isRowLocked = instrumentIndex >= kitSize;
+      const isResolutionLocked = !isStepLocked && !isStepAllowedByGridResolution(stepIndex);
+      cell.classList.toggle("step-cell--locked", isStepLocked);
+      cell.classList.toggle("step-cell--row-locked", isRowLocked);
+      cell.classList.toggle("step-cell--resolution-locked", isResolutionLocked);
+      cell.setAttribute("aria-disabled", String(isStepLocked || isRowLocked || isResolutionLocked));
+    });
+
+    stepNumberElements.forEach((numberElement, stepIndex) => {
+      const isStepLocked = stepIndex >= loopLength;
+      const isResolutionLocked = !isStepLocked && !isStepAllowedByGridResolution(stepIndex);
+      numberElement.classList.toggle("step-number--locked", isStepLocked);
+      numberElement.classList.toggle("step-number--resolution-locked", isResolutionLocked);
+    });
+  }
+
   function updateLoopLengthState() {
     const loopSlider = constraintSliders[LOOP_LENGTH_SLIDER_INDEX];
     if (!loopSlider) return;
 
     loopLength = readLoopLengthFromSliderValue(loopSlider.value);
 
-    allStepCells.forEach((cell) => {
-      const stepIndex = Number(cell.dataset.step);
-      const instrumentIndex = Number(cell.dataset.instrument);
-      const isStepLocked = stepIndex >= loopLength;
-      const isRowLocked = instrumentIndex >= kitSize;
-      cell.classList.toggle("step-cell--locked", isStepLocked);
-      cell.setAttribute("aria-disabled", String(isStepLocked || isRowLocked));
-    });
-
-    stepNumberElements.forEach((numberElement, stepIndex) => {
-      numberElement.classList.toggle("step-number--locked", stepIndex >= loopLength);
-    });
+    refreshStepAvailabilityState();
 
     if (currentStepIndex >= loopLength) {
       clearPlayhead();
       currentStepIndex = 0;
     }
 
+    updateDensityState();
+  }
+
+  function updateGridResolutionState() {
+    const gridSlider = constraintSliders[GRID_RESOLUTION_SLIDER_INDEX];
+    if (!gridSlider) return;
+
+    gridResolutionLevel = readGridResolutionFromSliderValue(gridSlider.value);
+    refreshStepAvailabilityState();
     updateDensityState();
   }
 
@@ -487,13 +520,7 @@ document.addEventListener("DOMContentLoaded", () => {
       button.setAttribute("aria-disabled", String(isLocked));
     });
 
-    stepCellsByInstrument.forEach((rowCells, instrumentIndex) => {
-      const isLocked = instrumentIndex >= kitSize;
-      rowCells.forEach((cell) => {
-        cell.classList.toggle("step-cell--row-locked", isLocked);
-        cell.setAttribute("aria-disabled", String(isLocked || Number(cell.dataset.step) >= loopLength));
-      });
-    });
+    refreshStepAvailabilityState();
 
     updateDensityState();
   }
@@ -514,6 +541,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let count = 0;
     for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
       for (let stepIndex = 0; stepIndex < loopLength; stepIndex += 1) {
+        if (!isStepAllowedByGridResolution(stepIndex)) continue;
         if (pattern[instrumentIndex][stepIndex]) {
           count += 1;
         }
@@ -601,12 +629,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const compliance = getDensityComplianceState();
     isOverDensityLimit = compliance.isOverLimit;
-    overDensityCount = compliance.hitCount;
-    overDensityMaxHits = Number.isFinite(compliance.maxHits) ? compliance.maxHits : 0;
-    overDensityOverBy = compliance.overBy;
 
     if (isOverDensityLimit) {
-      const nextMessage = `Over density limit: ${overDensityCount} hits in steps 1-${compliance.activeSteps} (max ${overDensityMaxHits}). Remove ${overDensityOverBy} hits to continue adding.`;
+      const limitedMaxHits = Number.isFinite(compliance.maxHits) ? compliance.maxHits : 0;
+      const nextMessage = `Over density limit: ${compliance.hitCount} hits in steps 1-${compliance.activeSteps} (max ${limitedMaxHits}). Remove ${compliance.overBy} hits to continue adding.`;
       if (persistentTryMessage !== nextMessage) {
         persistentTryMessage = nextMessage;
         if (tryThisText && tryThisMessageTimeoutId === null) {
@@ -626,7 +652,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const instrumentIndex = Number(cell.dataset.instrument);
       const stepIndex = Number(cell.dataset.step);
       const isActive = pattern[instrumentIndex][stepIndex];
-      const inActiveRegion = instrumentIndex < kitSize && stepIndex < loopLength;
+      const inActiveRegion =
+        instrumentIndex < kitSize &&
+        stepIndex < loopLength &&
+        isStepAllowedByGridResolution(stepIndex);
       cell.classList.toggle(
         "step-cell--over-limit-removable",
         isOverDensityLimit && isActive && inActiveRegion
@@ -736,7 +765,13 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       stepButton.addEventListener("click", () => {
-        if (stepIndex >= loopLength || instrumentIndex >= kitSize) return;
+        if (
+          stepIndex >= loopLength ||
+          instrumentIndex >= kitSize ||
+          !isStepAllowedByGridResolution(stepIndex)
+        ) {
+          return;
+        }
 
         const isCurrentlyActive = pattern[instrumentIndex][stepIndex];
         if (!isCurrentlyActive) {
@@ -841,6 +876,12 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    if (index === GRID_RESOLUTION_SLIDER_INDEX) {
+      const level = readGridResolutionFromSliderValue(value);
+      valueLabel.textContent = `Grid: ${level.charAt(0).toUpperCase() + level.slice(1)}`;
+      return;
+    }
+
     if (index === KIT_SIZE_SLIDER_INDEX) {
       valueLabel.textContent = `Kit: ${readKitSizeFromSliderValue(value)}`;
       return;
@@ -863,7 +904,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Per-slider input handling: update labels, apply loop/kit locking, and persist values.
+  // Per-slider input handling: update labels, refresh loop/kit/grid/density state, and persist values.
   loadConstraintValuesFromStorage();
 
   constraintSliders.forEach((slider, index) => {
@@ -873,6 +914,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (lockSlidersCheckbox.checked) {
         setAllSliderValues(slider.value);
         updateLoopLengthState();
+        updateGridResolutionState();
         updateKitSizeState();
         saveConstraintValuesToStorage();
         return;
@@ -881,6 +923,9 @@ document.addEventListener("DOMContentLoaded", () => {
       updateSliderLabel(index, slider.value);
       if (index === LOOP_LENGTH_SLIDER_INDEX) {
         updateLoopLengthState();
+      }
+      if (index === GRID_RESOLUTION_SLIDER_INDEX) {
+        updateGridResolutionState();
       }
       if (index === KIT_SIZE_SLIDER_INDEX) {
         updateKitSizeState();
@@ -900,12 +945,14 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       updateLoopLengthState();
+      updateGridResolutionState();
       updateKitSizeState();
       saveConstraintValuesToStorage();
     });
   }
 
   updateLoopLengthState();
+  updateGridResolutionState();
   updateKitSizeState();
 });
 
