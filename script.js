@@ -62,6 +62,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const LOOP_LENGTH_SLIDER_INDEX = 0;
   const GRID_RESOLUTION_OPTIONS = ["coarse", "medium", "fine"];
   const GRID_RESOLUTION_SLIDER_INDEX = 1;
+  const REPETITION_LEVELS = ["strong", "partial", "free"];
+  const REPETITION_SLIDER_INDEX = 5;
   const KIT_SIZE_OPTIONS = [3, 4, 5];
   const KIT_SIZE_SLIDER_INDEX = 3;
   const DENSITY_LEVELS = ["sparse", "moderate", "dense", "free"];
@@ -134,6 +136,9 @@ document.addEventListener("DOMContentLoaded", () => {
   );
   const stepCellsByColumn = Array.from({ length: stepsPerInstrument }, () => []);
   const stepCellsByInstrument = Array.from({ length: instruments.length }, () => []);
+  const repetitionScope = Array.from({ length: instruments.length }, () =>
+    Array(stepsPerInstrument).fill(false)
+  );
   const allStepCells = [];
   const stepNumberElements = [];
   const instrumentButtons = [];
@@ -147,6 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let gridResolutionLevel = "fine";
   let kitSize = 3;
   let densityLevel = "moderate";
+  let repetitionLevel = "free";
   let isOverDensityLimit = false;
   let tryThisMessageTimeoutId = null;
   let persistentTryMessage = baseTryThisMessage;
@@ -321,7 +327,7 @@ document.addEventListener("DOMContentLoaded", () => {
     instruments.forEach((_, instrumentIndex) => {
       if (instrumentIndex >= kitSize) return;
       if (!isStepAllowedByGridResolution(currentStepIndex)) return;
-      if (!pattern[instrumentIndex][currentStepIndex]) return;
+      if (!isEffectiveStepActive(instrumentIndex, currentStepIndex)) return;
 
       const bufferKey = instrumentBufferKeys[instrumentIndex];
       playDrum(drumBuffers[bufferKey], instrumentGainNodes[bufferKey], tickTime);
@@ -403,7 +409,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!isSpace) return;
 
     const target = document.activeElement;
-    if (target instanceof HTMLInputElement && target.type !== "range") {
+    if (
+      target instanceof HTMLInputElement &&
+      target.type !== "range" &&
+      target.type !== "checkbox"
+    ) {
       return;
     }
 
@@ -419,6 +429,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (
       target instanceof HTMLElement &&
       (
+        target.classList.contains("playback-toggle-button") ||
+        target.classList.contains("clear-button") ||
+        target.classList.contains("lock-checkbox") ||
         target.classList.contains("step-cell") ||
         target.classList.contains("constraint-slider") ||
         target.classList.contains("instrument-label")
@@ -445,6 +458,98 @@ document.addEventListener("DOMContentLoaded", () => {
     return GRID_RESOLUTION_OPTIONS[sliderIndex - 1];
   }
 
+  function readRepetitionLevelFromSliderValue(sliderValue) {
+    const sliderIndex = Math.max(1, Math.min(3, Number(sliderValue)));
+    return REPETITION_LEVELS[sliderIndex - 1];
+  }
+
+  function getRepetitionSourceStepForLevel(stepIndex, level) {
+    if (stepIndex >= loopLength || level === "free") return null;
+
+    const halfLength = loopLength / 2;
+    if (level === "strong") {
+      return stepIndex >= halfLength ? stepIndex - halfLength : null;
+    }
+
+    const mirroredLength = loopLength / 4;
+    const mirroredStart = halfLength;
+    const mirroredEnd = mirroredStart + mirroredLength;
+    return stepIndex >= mirroredStart && stepIndex < mirroredEnd
+      ? stepIndex - halfLength
+      : null;
+  }
+
+  function getRepetitionSourceStep(stepIndex) {
+    return getRepetitionSourceStepForLevel(stepIndex, repetitionLevel);
+  }
+
+  function isCellCurrentlyAvailable(instrumentIndex, stepIndex) {
+    return (
+      instrumentIndex < kitSize &&
+      stepIndex < loopLength &&
+      isStepAllowedByGridResolution(stepIndex)
+    );
+  }
+
+  function createRepetitionScopeMap(level) {
+    const nextScope = Array.from({ length: instruments.length }, () =>
+      Array(stepsPerInstrument).fill(false)
+    );
+
+    if (level === "free") {
+      return nextScope;
+    }
+
+    for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
+      for (let stepIndex = 0; stepIndex < loopLength; stepIndex += 1) {
+        if (!isStepAllowedByGridResolution(stepIndex)) continue;
+        nextScope[instrumentIndex][stepIndex] = true;
+      }
+    }
+
+    return nextScope;
+  }
+
+  function applyRepetitionScope(nextScope) {
+    repetitionScope.forEach((row, instrumentIndex) => {
+      row.forEach((_, stepIndex) => {
+        repetitionScope[instrumentIndex][stepIndex] = Boolean(nextScope[instrumentIndex][stepIndex]);
+      });
+    });
+  }
+
+  function isStepDerivedByRepetition(instrumentIndex, stepIndex, scope = repetitionScope) {
+    return Boolean(scope[instrumentIndex][stepIndex]) && getRepetitionSourceStep(stepIndex) !== null;
+  }
+
+  function isEffectiveStepActiveForLevel(
+    instrumentIndex,
+    stepIndex,
+    level,
+    scope = repetitionScope
+  ) {
+    const isInActiveRegion = isCellCurrentlyAvailable(instrumentIndex, stepIndex);
+
+    if (!isInActiveRegion) {
+      return Boolean(pattern[instrumentIndex][stepIndex]);
+    }
+
+    if (!scope[instrumentIndex][stepIndex]) {
+      return Boolean(pattern[instrumentIndex][stepIndex]);
+    }
+
+    const sourceStepIndex = getRepetitionSourceStepForLevel(stepIndex, level);
+    if (sourceStepIndex !== null && !isStepAllowedByGridResolution(sourceStepIndex)) {
+      return false;
+    }
+    const effectiveStepIndex = sourceStepIndex === null ? stepIndex : sourceStepIndex;
+    return Boolean(pattern[instrumentIndex][effectiveStepIndex]);
+  }
+
+  function isEffectiveStepActive(instrumentIndex, stepIndex) {
+    return isEffectiveStepActiveForLevel(instrumentIndex, stepIndex, repetitionLevel);
+  }
+
   function isStepAllowedByGridResolution(stepIndex) {
     const stepNumber = stepIndex + 1;
 
@@ -460,10 +565,19 @@ document.addEventListener("DOMContentLoaded", () => {
       const isStepLocked = stepIndex >= loopLength;
       const isRowLocked = instrumentIndex >= kitSize;
       const isResolutionLocked = !isStepLocked && !isStepAllowedByGridResolution(stepIndex);
+      const isDerived =
+        !isStepLocked &&
+        !isRowLocked &&
+        !isResolutionLocked &&
+        isStepDerivedByRepetition(instrumentIndex, stepIndex);
       cell.classList.toggle("step-cell--locked", isStepLocked);
       cell.classList.toggle("step-cell--row-locked", isRowLocked);
       cell.classList.toggle("step-cell--resolution-locked", isResolutionLocked);
-      cell.setAttribute("aria-disabled", String(isStepLocked || isRowLocked || isResolutionLocked));
+      cell.classList.toggle("step-cell--derived", isDerived);
+      cell.setAttribute(
+        "aria-disabled",
+        String(isStepLocked || isRowLocked || isResolutionLocked || isDerived)
+      );
     });
 
     stepNumberElements.forEach((numberElement, stepIndex) => {
@@ -472,6 +586,8 @@ document.addEventListener("DOMContentLoaded", () => {
       numberElement.classList.toggle("step-number--locked", isStepLocked);
       numberElement.classList.toggle("step-number--resolution-locked", isResolutionLocked);
     });
+
+    refreshEffectivePatternState();
   }
 
   function updateLoopLengthState() {
@@ -497,6 +613,82 @@ document.addEventListener("DOMContentLoaded", () => {
     gridResolutionLevel = readGridResolutionFromSliderValue(gridSlider.value);
     refreshStepAvailabilityState();
     updateDensityState();
+  }
+
+  function updateRepetitionState(options = {}) {
+    const { silent = false } = options;
+    const repetitionSlider = constraintSliders[REPETITION_SLIDER_INDEX];
+    if (!repetitionSlider) return;
+
+    const previousLevel = repetitionLevel;
+    const nextLevel = readRepetitionLevelFromSliderValue(repetitionSlider.value);
+    const previousScope = repetitionScope.map((row) => row.slice());
+    const nextScope = createRepetitionScopeMap(nextLevel);
+    let shouldShowRepetitionMessage = false;
+
+    if (nextLevel === "strong" || nextLevel === "partial") {
+      for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
+        for (let stepIndex = 0; stepIndex < loopLength; stepIndex += 1) {
+          if (!isStepAllowedByGridResolution(stepIndex)) continue;
+
+          const wasActive = isEffectiveStepActiveForLevel(
+            instrumentIndex,
+            stepIndex,
+            previousLevel,
+            previousScope
+          );
+          const willBeActive = isEffectiveStepActiveForLevel(
+            instrumentIndex,
+            stepIndex,
+            nextLevel,
+            nextScope
+          );
+
+          if (wasActive !== willBeActive) {
+            shouldShowRepetitionMessage = true;
+            break;
+          }
+        }
+
+        if (shouldShowRepetitionMessage) {
+          break;
+        }
+      }
+    }
+
+    for (let instrumentIndex = 0; instrumentIndex < instruments.length; instrumentIndex += 1) {
+      for (let stepIndex = 0; stepIndex < stepsPerInstrument; stepIndex += 1) {
+        const wasDerived =
+          previousScope[instrumentIndex][stepIndex] &&
+          getRepetitionSourceStepForLevel(stepIndex, previousLevel) !== null;
+        const isDerived =
+          nextScope[instrumentIndex][stepIndex] &&
+          getRepetitionSourceStepForLevel(stepIndex, nextLevel) !== null;
+        if (!wasDerived || isDerived) continue;
+
+        pattern[instrumentIndex][stepIndex] = isEffectiveStepActiveForLevel(
+          instrumentIndex,
+          stepIndex,
+          previousLevel,
+          previousScope
+        );
+      }
+    }
+
+    repetitionLevel = nextLevel;
+    applyRepetitionScope(nextScope);
+    refreshStepAvailabilityState();
+    savePatternToStorage();
+    updateDensityState();
+
+    if (!silent && shouldShowRepetitionMessage) {
+      showTemporaryTryMessage(
+        nextLevel === "strong"
+          ? "Repetition applied: second half now mirrors the first."
+          : "Repetition applied: part of the second half now mirrors part of the first.",
+        4500
+      );
+    }
   }
 
   function readKitSizeFromSliderValue(sliderValue) {
@@ -542,7 +734,7 @@ document.addEventListener("DOMContentLoaded", () => {
     for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
       for (let stepIndex = 0; stepIndex < loopLength; stepIndex += 1) {
         if (!isStepAllowedByGridResolution(stepIndex)) continue;
-        if (pattern[instrumentIndex][stepIndex]) {
+        if (isEffectiveStepActive(instrumentIndex, stepIndex)) {
           count += 1;
         }
       }
@@ -612,6 +804,26 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 280);
   }
 
+  function triggerDerivedStepFeedback(stepCell) {
+    stepCell.classList.remove("step-cell--derived-feedback");
+    void stepCell.offsetWidth;
+    stepCell.classList.add("step-cell--derived-feedback");
+
+    window.setTimeout(() => {
+      stepCell.classList.remove("step-cell--derived-feedback");
+    }, 280);
+  }
+
+  function refreshEffectivePatternState() {
+    allStepCells.forEach((cell) => {
+      const instrumentIndex = Number(cell.dataset.instrument);
+      const stepIndex = Number(cell.dataset.step);
+      const isActive = isEffectiveStepActive(instrumentIndex, stepIndex);
+      cell.classList.toggle("step-cell--active", isActive);
+      cell.setAttribute("aria-pressed", String(isActive));
+    });
+  }
+
   function updateDensityState() {
     const densitySlider = constraintSliders[DENSITY_SLIDER_INDEX];
     if (!densitySlider) return;
@@ -651,7 +863,7 @@ document.addEventListener("DOMContentLoaded", () => {
     allStepCells.forEach((cell) => {
       const instrumentIndex = Number(cell.dataset.instrument);
       const stepIndex = Number(cell.dataset.step);
-      const isActive = pattern[instrumentIndex][stepIndex];
+      const isActive = isEffectiveStepActive(instrumentIndex, stepIndex);
       const inActiveRegion =
         instrumentIndex < kitSize &&
         stepIndex < loopLength &&
@@ -773,6 +985,11 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
+        if (isStepDerivedByRepetition(instrumentIndex, stepIndex)) {
+          triggerDerivedStepFeedback(stepButton);
+          return;
+        }
+
         const isCurrentlyActive = pattern[instrumentIndex][stepIndex];
         if (!isCurrentlyActive) {
           const compliance = getDensityComplianceState();
@@ -797,8 +1014,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         pattern[instrumentIndex][stepIndex] = !isCurrentlyActive;
         const isActive = pattern[instrumentIndex][stepIndex];
-        stepButton.classList.toggle("step-cell--active", isActive);
-        stepButton.setAttribute("aria-pressed", String(isActive));
+        refreshEffectivePatternState();
         savePatternToStorage();
         updateDensityState();
 
@@ -862,6 +1078,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       previousStepIndex = -1;
       savePatternToStorage();
+      refreshEffectivePatternState();
       updateDensityState();
     });
   }
@@ -893,6 +1110,12 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    if (index === REPETITION_SLIDER_INDEX) {
+      const level = readRepetitionLevelFromSliderValue(value);
+      valueLabel.textContent = `Repetition: ${level.charAt(0).toUpperCase() + level.slice(1)}`;
+      return;
+    }
+
     valueLabel.textContent = `Level: ${value}`;
   }
 
@@ -916,6 +1139,7 @@ document.addEventListener("DOMContentLoaded", () => {
         updateLoopLengthState();
         updateGridResolutionState();
         updateKitSizeState();
+        updateRepetitionState();
         saveConstraintValuesToStorage();
         return;
       }
@@ -933,6 +1157,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (index === DENSITY_SLIDER_INDEX) {
         updateDensityState();
       }
+      if (index === REPETITION_SLIDER_INDEX) {
+        updateRepetitionState();
+      }
       saveConstraintValuesToStorage();
     });
   });
@@ -947,6 +1174,7 @@ document.addEventListener("DOMContentLoaded", () => {
       updateLoopLengthState();
       updateGridResolutionState();
       updateKitSizeState();
+      updateRepetitionState({ silent: true });
       saveConstraintValuesToStorage();
     });
   }
@@ -954,5 +1182,6 @@ document.addEventListener("DOMContentLoaded", () => {
   updateLoopLengthState();
   updateGridResolutionState();
   updateKitSizeState();
+  updateRepetitionState({ silent: true });
 });
 

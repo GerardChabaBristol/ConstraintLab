@@ -222,14 +222,16 @@
           </div>
 
           <div class="constraint-control">
-            <label for="constraintSlider6" class="constraint-label">Repetition</label>
+            <label
+              for="constraintSlider6"
+              class="constraint-label constraint-label--help"
+              data-tooltip="Controls how much of the loop repeats earlier pattern sections."
+            >Repetition</label>
             <div class="constraint-fader-row">
               <div class="constraint-scale" aria-hidden="true">
-                <span>5</span>
-                <span>4</span>
-                <span>3</span>
-                <span>2</span>
-                <span>1</span>
+                <span title="No repetition is applied.">Free</span>
+                <span title="Most of the second half repeats the first, but the end is editable.">Partial</span>
+                <span title="The second half of the loop mirrors the first half.">Strong</span>
               </div>
               <div class="constraint-fader">
                 <input
@@ -237,13 +239,13 @@
                   class="constraint-slider"
                   type="range"
                   min="1"
-                  max="5"
+                  max="3"
                   step="1"
                   value="3"
                 />
               </div>
             </div>
-            <span id="constraintValue6" class="constraint-value constraint-level-value">Level: 3</span>
+            <span id="constraintValue6" class="constraint-value constraint-level-value">Repetition: Free</span>
           </div>
         </div>
 
