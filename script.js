@@ -106,7 +106,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Create a new source for each hit so simultaneous notes can overlap correctly.
+    // Create a new source for each hit so notes can overlap on the same step.
     const source = audioContext.createBufferSource();
     source.buffer = buffer;
     source.connect(gainNode || audioContext.destination);
@@ -136,9 +136,6 @@ document.addEventListener("DOMContentLoaded", () => {
   );
   const stepCellsByColumn = Array.from({ length: stepsPerInstrument }, () => []);
   const stepCellsByInstrument = Array.from({ length: instruments.length }, () => []);
-  const repetitionScope = Array.from({ length: instruments.length }, () =>
-    Array(stepsPerInstrument).fill(false)
-  );
   const allStepCells = [];
   const stepNumberElements = [];
   const instrumentButtons = [];
@@ -491,14 +488,10 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   }
 
-  function createRepetitionScopeMap(level) {
+  function createActiveScopeMap() {
     const nextScope = Array.from({ length: instruments.length }, () =>
       Array(stepsPerInstrument).fill(false)
     );
-
-    if (level === "free") {
-      return nextScope;
-    }
 
     for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
       for (let stepIndex = 0; stepIndex < loopLength; stepIndex += 1) {
@@ -510,31 +503,14 @@ document.addEventListener("DOMContentLoaded", () => {
     return nextScope;
   }
 
-  function applyRepetitionScope(nextScope) {
-    repetitionScope.forEach((row, instrumentIndex) => {
-      row.forEach((_, stepIndex) => {
-        repetitionScope[instrumentIndex][stepIndex] = Boolean(nextScope[instrumentIndex][stepIndex]);
-      });
-    });
+  function isStepDerivedByRepetition(instrumentIndex, stepIndex) {
+    return isCellCurrentlyAvailable(instrumentIndex, stepIndex) && getRepetitionSourceStep(stepIndex) !== null;
   }
 
-  function isStepDerivedByRepetition(instrumentIndex, stepIndex, scope = repetitionScope) {
-    return Boolean(scope[instrumentIndex][stepIndex]) && getRepetitionSourceStep(stepIndex) !== null;
-  }
-
-  function isEffectiveStepActiveForLevel(
-    instrumentIndex,
-    stepIndex,
-    level,
-    scope = repetitionScope
-  ) {
+  function isEffectiveStepActiveForLevel(instrumentIndex, stepIndex, level) {
     const isInActiveRegion = isCellCurrentlyAvailable(instrumentIndex, stepIndex);
 
     if (!isInActiveRegion) {
-      return Boolean(pattern[instrumentIndex][stepIndex]);
-    }
-
-    if (!scope[instrumentIndex][stepIndex]) {
       return Boolean(pattern[instrumentIndex][stepIndex]);
     }
 
@@ -548,6 +524,68 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function isEffectiveStepActive(instrumentIndex, stepIndex) {
     return isEffectiveStepActiveForLevel(instrumentIndex, stepIndex, repetitionLevel);
+  }
+
+  function getRepetitionAppliedMessage(level = repetitionLevel) {
+    return level === "strong"
+      ? "Repetition applied: second half now mirrors the first."
+      : "Repetition applied: part of the second half now mirrors part of the first.";
+  }
+
+  function captureVisibleRepetitionOverrideSnapshot() {
+    const overrideStates = [];
+
+    for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
+      for (let stepIndex = 0; stepIndex < loopLength; stepIndex += 1) {
+        if (!isStepAllowedByGridResolution(stepIndex)) continue;
+
+        const sourceStepIndex = getRepetitionSourceStep(stepIndex);
+        if (sourceStepIndex === null) continue;
+
+        const storedValue = Boolean(pattern[instrumentIndex][stepIndex]);
+        const effectiveValue = isEffectiveStepActive(instrumentIndex, stepIndex);
+        if (storedValue === effectiveValue) continue;
+
+        overrideStates.push(`${instrumentIndex}:${stepIndex}:${effectiveValue ? 1 : 0}`);
+      }
+    }
+
+    return overrideStates.join("|");
+  }
+
+  function maybeShowRepetitionScopeChangeMessage(previousSnapshot, silent = false) {
+    if (silent) return;
+    if (repetitionLevel !== "strong" && repetitionLevel !== "partial") return;
+
+    const nextSnapshot = captureVisibleRepetitionOverrideSnapshot();
+    if (!nextSnapshot || previousSnapshot === nextSnapshot) return;
+
+    showTemporaryTryMessage(getRepetitionAppliedMessage(), 4500);
+  }
+
+  function willStepBeDerived(stepIndex, level) {
+    return getRepetitionSourceStepForLevel(stepIndex, level) !== null;
+  }
+
+  function getProjectedStepStateForRepetitionChange(
+    instrumentIndex,
+    stepIndex,
+    previousLevel,
+    nextLevel,
+    activeScope
+  ) {
+    if (!activeScope[instrumentIndex][stepIndex]) {
+      return Boolean(pattern[instrumentIndex][stepIndex]);
+    }
+
+    const wasDerived = willStepBeDerived(stepIndex, previousLevel);
+    const willBeDerived = willStepBeDerived(stepIndex, nextLevel);
+
+    if (wasDerived && !willBeDerived) {
+      return isEffectiveStepActiveForLevel(instrumentIndex, stepIndex, previousLevel);
+    }
+
+    return isEffectiveStepActiveForLevel(instrumentIndex, stepIndex, nextLevel);
   }
 
   function isStepAllowedByGridResolution(stepIndex) {
@@ -590,9 +628,11 @@ document.addEventListener("DOMContentLoaded", () => {
     refreshEffectivePatternState();
   }
 
-  function updateLoopLengthState() {
+  function updateLoopLengthState(options = {}) {
+    const { silent = false } = options;
     const loopSlider = constraintSliders[LOOP_LENGTH_SLIDER_INDEX];
     if (!loopSlider) return;
+    const previousSnapshot = captureVisibleRepetitionOverrideSnapshot();
 
     loopLength = readLoopLengthFromSliderValue(loopSlider.value);
 
@@ -604,15 +644,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     updateDensityState();
+    maybeShowRepetitionScopeChangeMessage(previousSnapshot, silent);
   }
 
-  function updateGridResolutionState() {
+  function updateGridResolutionState(options = {}) {
+    const { silent = false } = options;
     const gridSlider = constraintSliders[GRID_RESOLUTION_SLIDER_INDEX];
     if (!gridSlider) return;
+    const previousSnapshot = captureVisibleRepetitionOverrideSnapshot();
 
     gridResolutionLevel = readGridResolutionFromSliderValue(gridSlider.value);
     refreshStepAvailabilityState();
     updateDensityState();
+    maybeShowRepetitionScopeChangeMessage(previousSnapshot, silent);
   }
 
   function updateRepetitionState(options = {}) {
@@ -622,26 +666,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const previousLevel = repetitionLevel;
     const nextLevel = readRepetitionLevelFromSliderValue(repetitionSlider.value);
-    const previousScope = repetitionScope.map((row) => row.slice());
-    const nextScope = createRepetitionScopeMap(nextLevel);
+    const activeScope = createActiveScopeMap();
     let shouldShowRepetitionMessage = false;
 
     if (nextLevel === "strong" || nextLevel === "partial") {
       for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
         for (let stepIndex = 0; stepIndex < loopLength; stepIndex += 1) {
-          if (!isStepAllowedByGridResolution(stepIndex)) continue;
+          if (!activeScope[instrumentIndex][stepIndex]) continue;
 
-          const wasActive = isEffectiveStepActiveForLevel(
+          const wasActive = isEffectiveStepActiveForLevel(instrumentIndex, stepIndex, previousLevel);
+          const willBeActive = getProjectedStepStateForRepetitionChange(
             instrumentIndex,
             stepIndex,
             previousLevel,
-            previousScope
-          );
-          const willBeActive = isEffectiveStepActiveForLevel(
-            instrumentIndex,
-            stepIndex,
             nextLevel,
-            nextScope
+            activeScope
           );
 
           if (wasActive !== willBeActive) {
@@ -658,34 +697,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
     for (let instrumentIndex = 0; instrumentIndex < instruments.length; instrumentIndex += 1) {
       for (let stepIndex = 0; stepIndex < stepsPerInstrument; stepIndex += 1) {
-        const wasDerived =
-          previousScope[instrumentIndex][stepIndex] &&
-          getRepetitionSourceStepForLevel(stepIndex, previousLevel) !== null;
-        const isDerived =
-          nextScope[instrumentIndex][stepIndex] &&
-          getRepetitionSourceStepForLevel(stepIndex, nextLevel) !== null;
+        if (!activeScope[instrumentIndex][stepIndex]) continue;
+
+        const wasDerived = getRepetitionSourceStepForLevel(stepIndex, previousLevel) !== null;
+        const isDerived = getRepetitionSourceStepForLevel(stepIndex, nextLevel) !== null;
         if (!wasDerived || isDerived) continue;
 
-        pattern[instrumentIndex][stepIndex] = isEffectiveStepActiveForLevel(
-          instrumentIndex,
-          stepIndex,
-          previousLevel,
-          previousScope
-        );
+        pattern[instrumentIndex][stepIndex] = isEffectiveStepActiveForLevel(instrumentIndex, stepIndex, previousLevel);
       }
     }
 
     repetitionLevel = nextLevel;
-    applyRepetitionScope(nextScope);
     refreshStepAvailabilityState();
     savePatternToStorage();
     updateDensityState();
 
     if (!silent && shouldShowRepetitionMessage) {
       showTemporaryTryMessage(
-        nextLevel === "strong"
-          ? "Repetition applied: second half now mirrors the first."
-          : "Repetition applied: part of the second half now mirrors part of the first.",
+        getRepetitionAppliedMessage(nextLevel),
         4500
       );
     }
@@ -696,9 +725,11 @@ document.addEventListener("DOMContentLoaded", () => {
     return KIT_SIZE_OPTIONS[sliderIndex - 1];
   }
 
-  function updateKitSizeState() {
+  function updateKitSizeState(options = {}) {
+    const { silent = false } = options;
     const kitSlider = constraintSliders[KIT_SIZE_SLIDER_INDEX];
     if (!kitSlider) return;
+    const previousSnapshot = captureVisibleRepetitionOverrideSnapshot();
 
     kitSize = readKitSizeFromSliderValue(kitSlider.value);
 
@@ -715,6 +746,7 @@ document.addEventListener("DOMContentLoaded", () => {
     refreshStepAvailabilityState();
 
     updateDensityState();
+    maybeShowRepetitionScopeChangeMessage(previousSnapshot, silent);
   }
 
   function readDensityLevelFromSliderValue(sliderValue) {
@@ -1127,7 +1159,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Per-slider input handling: update labels, refresh loop/kit/grid/density state, and persist values.
+  // Per-slider input handling: update labels, refresh current constraint state, and persist values.
   loadConstraintValuesFromStorage();
 
   constraintSliders.forEach((slider, index) => {
@@ -1171,17 +1203,17 @@ document.addEventListener("DOMContentLoaded", () => {
         updateSliderLabel(index, slider.value);
       });
 
-      updateLoopLengthState();
-      updateGridResolutionState();
-      updateKitSizeState();
+      updateLoopLengthState({ silent: true });
+      updateGridResolutionState({ silent: true });
+      updateKitSizeState({ silent: true });
       updateRepetitionState({ silent: true });
       saveConstraintValuesToStorage();
     });
   }
 
-  updateLoopLengthState();
-  updateGridResolutionState();
-  updateKitSizeState();
+  updateLoopLengthState({ silent: true });
+  updateGridResolutionState({ silent: true });
+  updateKitSizeState({ silent: true });
   updateRepetitionState({ silent: true });
 });
 
