@@ -66,6 +66,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const REPETITION_SLIDER_INDEX = 5;
   const KIT_SIZE_OPTIONS = [3, 4, 5];
   const KIT_SIZE_SLIDER_INDEX = 3;
+  const GUIDANCE_LEVELS = ["strong", "light", "free"];
+  const GUIDANCE_SLIDER_INDEX = 4;
   const DENSITY_LEVELS = ["sparse", "moderate", "dense", "free"];
   const DENSITY_SLIDER_INDEX = 2;
 
@@ -149,6 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let gridResolutionLevel = "fine";
   let kitSize = 3;
   let densityLevel = "moderate";
+  let guidanceLevel = "free";
   let repetitionLevel = "free";
   let isOverDensityLimit = false;
   let tryThisMessageTimeoutId = null;
@@ -507,6 +510,16 @@ document.addEventListener("DOMContentLoaded", () => {
     return isCellCurrentlyAvailable(instrumentIndex, stepIndex) && getRepetitionSourceStep(stepIndex) !== null;
   }
 
+  function isGuidanceGhostAnchor(instrumentIndex, stepIndex) {
+    if (guidanceLevel !== "strong") return false;
+    if (!isCellCurrentlyAvailable(instrumentIndex, stepIndex)) return false;
+    if (isStepDerivedByRepetition(instrumentIndex, stepIndex)) return false;
+    if (isEffectiveStepActive(instrumentIndex, stepIndex)) return false;
+
+    const anchors = getGuidanceGhostAnchors(loopLength);
+    return Boolean(anchors[instrumentIndex]?.includes(stepIndex));
+  }
+
   function isEffectiveStepActiveForLevel(instrumentIndex, stepIndex, level) {
     const isInActiveRegion = isCellCurrentlyAvailable(instrumentIndex, stepIndex);
 
@@ -761,6 +774,57 @@ document.addEventListener("DOMContentLoaded", () => {
     return Math.max(10, Math.ceil(activeSteps * 0.8));
   }
 
+  function readGuidanceLevelFromSliderValue(sliderValue) {
+    const sliderIndex = Math.max(1, Math.min(3, Number(sliderValue)));
+    return GUIDANCE_LEVELS[sliderIndex - 1];
+  }
+
+  function getGuidanceGhostAnchors(activeLoopLength) {
+    const halfLength = activeLoopLength / 2;
+    const quarterLength = activeLoopLength / 4;
+
+    return {
+      0: [0, halfLength],
+      1: [quarterLength, quarterLength + halfLength],
+    };
+  }
+
+  function isGuidanceColumn(stepIndex, activeLoopLength, level = guidanceLevel) {
+    if (level !== "light" || stepIndex >= activeLoopLength) return false;
+
+    if (activeLoopLength === 8) {
+      return [0, 2, 4, 6].includes(stepIndex);
+    }
+
+    if (activeLoopLength === 16) {
+      return [0, 4, 8, 12].includes(stepIndex);
+    }
+
+    return [0, 8, 16, 24].includes(stepIndex);
+  }
+
+  function getGuidanceTryMessage(level = guidanceLevel) {
+    if (level === "strong") {
+      return "Try starting with the suggested kick and snare steps (you don't need to use every suggestion).";
+    }
+    if (level === "light") {
+      return "Try starting with the highlighted beat positions (you don't need to use every suggestion).";
+    }
+    return "Try creating your own pattern freely.";
+  }
+
+  function refreshPersistentTryMessage() {
+    if (isOverDensityLimit) return;
+
+    const nextMessage = guidanceLevel === "free" ? baseTryThisMessage : getGuidanceTryMessage();
+    if (persistentTryMessage !== nextMessage) {
+      persistentTryMessage = nextMessage;
+      if (tryThisText && tryThisMessageTimeoutId === null) {
+        tryThisText.textContent = persistentTryMessage;
+      }
+    }
+  }
+
   function countActiveHitsInEditableRegion() {
     let count = 0;
     for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
@@ -853,6 +917,19 @@ document.addEventListener("DOMContentLoaded", () => {
       const isActive = isEffectiveStepActive(instrumentIndex, stepIndex);
       cell.classList.toggle("step-cell--active", isActive);
       cell.setAttribute("aria-pressed", String(isActive));
+
+      const isStepLocked = stepIndex >= loopLength;
+      const isRowLocked = instrumentIndex >= kitSize;
+      const isResolutionLocked = !isStepLocked && !isStepAllowedByGridResolution(stepIndex);
+      const isDerived = !isStepLocked && !isRowLocked && !isResolutionLocked &&
+        isStepDerivedByRepetition(instrumentIndex, stepIndex);
+      const isGuidanceGhost = !isStepLocked && !isRowLocked && !isResolutionLocked &&
+        !isDerived && isGuidanceGhostAnchor(instrumentIndex, stepIndex);
+      const isGuidanceColumnHighlight = !isStepLocked && !isRowLocked && !isResolutionLocked &&
+        isGuidanceColumn(stepIndex, loopLength);
+
+      cell.classList.toggle("step-cell--guidance-ghost", isGuidanceGhost);
+      cell.classList.toggle("step-cell--guidance-column", isGuidanceColumnHighlight);
     });
   }
 
@@ -884,12 +961,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     } else {
-      if (persistentTryMessage !== baseTryThisMessage) {
-        persistentTryMessage = baseTryThisMessage;
-        if (tryThisText && tryThisMessageTimeoutId === null) {
-          tryThisText.textContent = persistentTryMessage;
-        }
-      }
+      refreshPersistentTryMessage();
     }
 
     allStepCells.forEach((cell) => {
@@ -1136,6 +1208,12 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    if (index === GUIDANCE_SLIDER_INDEX) {
+      const level = readGuidanceLevelFromSliderValue(value);
+      valueLabel.textContent = `Guidance: ${level.charAt(0).toUpperCase() + level.slice(1)}`;
+      return;
+    }
+
     if (index === DENSITY_SLIDER_INDEX) {
       const level = readDensityLevelFromSliderValue(value);
       valueLabel.textContent = `Density: ${level.charAt(0).toUpperCase() + level.slice(1)}`;
@@ -1159,7 +1237,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Per-slider input handling: update labels, refresh current constraint state, and persist values.
+  // Per-slider input handling: update labels, refresh current constraint state and guidance cues, and persist values.
   loadConstraintValuesFromStorage();
 
   constraintSliders.forEach((slider, index) => {
@@ -1171,6 +1249,7 @@ document.addEventListener("DOMContentLoaded", () => {
         updateLoopLengthState();
         updateGridResolutionState();
         updateKitSizeState();
+        updateGuidanceState();
         updateRepetitionState();
         saveConstraintValuesToStorage();
         return;
@@ -1185,6 +1264,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (index === KIT_SIZE_SLIDER_INDEX) {
         updateKitSizeState();
+      }
+      if (index === GUIDANCE_SLIDER_INDEX) {
+        updateGuidanceState();
       }
       if (index === DENSITY_SLIDER_INDEX) {
         updateDensityState();
@@ -1206,14 +1288,42 @@ document.addEventListener("DOMContentLoaded", () => {
       updateLoopLengthState({ silent: true });
       updateGridResolutionState({ silent: true });
       updateKitSizeState({ silent: true });
+      updateGuidanceState({ silent: true });
       updateRepetitionState({ silent: true });
       saveConstraintValuesToStorage();
     });
   }
 
+  function updateGuidanceState(options = {}) {
+    const { silent = false } = options;
+    const guidanceSlider = constraintSliders[GUIDANCE_SLIDER_INDEX];
+    if (!guidanceSlider) return;
+
+    const previousLevel = guidanceLevel;
+    guidanceLevel = readGuidanceLevelFromSliderValue(guidanceSlider.value);
+
+    if (previousLevel === "free" && guidanceLevel !== "free" && tryThisMessageTimeoutId !== null) {
+      window.clearTimeout(tryThisMessageTimeoutId);
+      tryThisMessageTimeoutId = null;
+    }
+
+    refreshEffectivePatternState();
+    refreshPersistentTryMessage();
+
+    if (
+      !silent &&
+      previousLevel !== guidanceLevel &&
+      guidanceLevel === "free" &&
+      !isOverDensityLimit
+    ) {
+      showTemporaryTryMessage(getGuidanceTryMessage("free"), 4000);
+    }
+  }
+
   updateLoopLengthState({ silent: true });
   updateGridResolutionState({ silent: true });
   updateKitSizeState({ silent: true });
+  updateGuidanceState({ silent: true });
   updateRepetitionState({ silent: true });
 });
 
