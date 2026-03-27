@@ -368,6 +368,7 @@ body {
   background: #232a34;
   cursor: pointer;
   flex: 0 0 auto;
+  position: relative;
 }
 
 .step-cell:hover {
@@ -438,6 +439,28 @@ body {
 .step-cell--derived.step-cell--active {
   background: rgba(91, 167, 255, 0.4);
   border-color: rgba(141, 192, 255, 0.7);
+}
+
+.step-cell--guidance-column:not(.step-cell--active):not(.step-cell--locked):not(.step-cell--row-locked):not(.step-cell--resolution-locked):not(.step-cell--derived) {
+  background: #27313b;
+  border-color: #425164;
+}
+
+.step-cell--guidance-ghost:not(.step-cell--active):not(.step-cell--locked):not(.step-cell--row-locked):not(.step-cell--resolution-locked):not(.step-cell--derived) {
+  background: #202932;
+  border-style: dashed;
+  border-color: rgba(121, 183, 255, 0.55);
+}
+
+.step-cell--guidance-ghost:not(.step-cell--active):not(.step-cell--locked):not(.step-cell--row-locked):not(.step-cell--resolution-locked):not(.step-cell--derived)::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(121, 183, 255, 0.58);
+  transform: translate(-50%, -50%);
 }
 
 .step-cell--over-limit-removable {

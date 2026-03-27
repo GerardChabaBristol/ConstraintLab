@@ -197,14 +197,16 @@
           </div>
 
           <div class="constraint-control">
-            <label for="constraintSlider5" class="constraint-label">Guidance</label>
+            <label
+              for="constraintSlider5"
+              class="constraint-label constraint-label--help"
+              data-tooltip="Provides visual help for where to start building a rhythm."
+            >Guidance</label>
             <div class="constraint-fader-row">
               <div class="constraint-scale" aria-hidden="true">
-                <span>5</span>
-                <span>4</span>
-                <span>3</span>
-                <span>2</span>
-                <span>1</span>
+                <span title="No guidance is shown.">Free</span>
+                <span title="Highlights important beat positions without suggesting exact notes.">Light</span>
+                <span title="Shows suggested kick and snare starting points.">Strong</span>
               </div>
               <div class="constraint-fader">
                 <input
@@ -212,13 +214,13 @@
                   class="constraint-slider"
                   type="range"
                   min="1"
-                  max="5"
+                  max="3"
                   step="1"
                   value="3"
                 />
               </div>
             </div>
-            <span id="constraintValue5" class="constraint-value constraint-level-value">Level: 3</span>
+            <span id="constraintValue5" class="constraint-value constraint-level-value">Guidance: Free</span>
           </div>
 
           <div class="constraint-control">
