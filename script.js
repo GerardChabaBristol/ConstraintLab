@@ -126,11 +126,11 @@ document.addEventListener("DOMContentLoaded", () => {
     { name: "Open-hat" },
   ];
   const instrumentTooltips = {
-    Kick: "Kick - the low drum that provides the main pulse of the beat.",
-    Snare: "Snare - a sharp drum sound that adds impact and rhythm to a beat.",
-    "Hi-hat": "Hi-hat - a short, crisp cymbal sound often used to keep the rhythm moving.",
-    Perc: "Percussion - a small rhythmic accent used to add groove and variation.",
-    "Open-hat": "Open hi-hat - a longer cymbal sound that adds energy and movement.",
+    Kick: "Kick: the low drum that provides the main pulse of the beat.",
+    Snare: "Snare: a sharp drum sound that adds impact and rhythm to a beat.",
+    "Hi-hat": "Hi-hat: a short, crisp cymbal sound often used to keep the rhythm moving.",
+    Perc: "Percussion: a small rhythmic accent used to add groove and variation.",
+    "Open-hat": "Open hi-hat: a longer cymbal sound that adds energy and movement.",
   };
   const stepsPerInstrument = 32;
   const pattern = Array.from({ length: instruments.length }, () =>
@@ -147,6 +147,16 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentStepIndex = 0;
   let previousStepIndex = -1;
   let isMetronomeOn = false;
+  let isGridPointerDown = false;
+  let isGridDragPlacing = false;
+  let suppressNextGridClick = false;
+  let pendingDragStartCell = null;
+  let selectedInstrumentIndex = 0;
+  let selectedStepIndex = 0;
+  let isKeyboardGridSelectionVisible = false;
+  let activeGridHistorySnapshot = null;
+  let gridInteractionDirty = false;
+  let pendingSliderHistorySnapshot = null;
   let loopLength = 8;
   let gridResolutionLevel = "fine";
   let kitSize = 3;
@@ -156,6 +166,9 @@ document.addEventListener("DOMContentLoaded", () => {
   let isOverDensityLimit = false;
   let tryThisMessageTimeoutId = null;
   let persistentTryMessage = baseTryThisMessage;
+  const undoHistory = [];
+  const redoHistory = [];
+  const isMacPlatform = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
   // Persist only the step matrix so edits survive reloads until the user clears them.
   function savePatternToStorage() {
@@ -226,6 +239,114 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch {
       // Ignore invalid saved data and keep default slider values.
     }
+  }
+
+  function clonePatternState() {
+    return pattern.map((row) => row.slice());
+  }
+
+  function cloneConstraintState() {
+    return constraintSliders.map((slider) => slider.value);
+  }
+
+  function getEditorStateSnapshot() {
+    return {
+      pattern: clonePatternState(),
+      sliders: cloneConstraintState(),
+    };
+  }
+
+  function areEditorStatesEqual(firstState, secondState) {
+    if (!firstState || !secondState) return false;
+
+    const firstPattern = JSON.stringify(firstState.pattern);
+    const secondPattern = JSON.stringify(secondState.pattern);
+    if (firstPattern !== secondPattern) return false;
+
+    return JSON.stringify(firstState.sliders) === JSON.stringify(secondState.sliders);
+  }
+
+  function pushUndoState(previousState) {
+    if (!previousState) return;
+
+    const currentState = getEditorStateSnapshot();
+    if (areEditorStatesEqual(previousState, currentState)) return;
+
+    undoHistory.push(previousState);
+    redoHistory.length = 0;
+  }
+
+  function captureVisibleEffectivePatternSignature() {
+    const visibleStates = [];
+
+    for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
+      for (let stepIndex = 0; stepIndex < loopLength; stepIndex += 1) {
+        if (!isStepAllowedByGridResolution(stepIndex)) continue;
+        visibleStates.push(isEffectiveStepActive(instrumentIndex, stepIndex) ? "1" : "0");
+      }
+    }
+
+    return visibleStates.join("");
+  }
+
+  function applyEditorStateSnapshot(stateSnapshot, options = {}) {
+    if (!stateSnapshot) return;
+    const { showRepetitionMessage = false } = options;
+    const previousRepetitionLevel = repetitionLevel;
+    const previousVisiblePattern = captureVisibleEffectivePatternSignature();
+
+    pattern.forEach((row, instrumentIndex) => {
+      row.forEach((_, stepIndex) => {
+        pattern[instrumentIndex][stepIndex] = Boolean(stateSnapshot.pattern[instrumentIndex]?.[stepIndex]);
+      });
+    });
+
+    constraintSliders.forEach((slider, index) => {
+      const nextValue = stateSnapshot.sliders[index];
+      if (nextValue === undefined) return;
+      slider.value = nextValue;
+      updateSliderLabel(index, slider.value);
+    });
+
+    updateLoopLengthState({ silent: true });
+    updateGridResolutionState({ silent: true });
+    updateKitSizeState({ silent: true });
+    updateGuidanceState({ silent: true });
+    repetitionLevel = readRepetitionLevelFromSliderValue(
+      constraintSliders[REPETITION_SLIDER_INDEX]?.value
+    );
+    refreshStepAvailabilityState();
+    refreshEffectivePatternState();
+    updateDensityState();
+    savePatternToStorage();
+    saveConstraintValuesToStorage();
+
+    const nextRepetitionLevel = repetitionLevel;
+    const nextVisiblePattern = captureVisibleEffectivePatternSignature();
+    if (
+      showRepetitionMessage &&
+      previousRepetitionLevel !== nextRepetitionLevel &&
+      nextRepetitionLevel !== "free" &&
+      previousVisiblePattern !== nextVisiblePattern
+    ) {
+      showTemporaryTryMessage(getRepetitionAppliedMessage(nextRepetitionLevel), 4500, true);
+    }
+  }
+
+  function performUndo() {
+    const previousState = undoHistory.pop();
+    if (!previousState) return;
+
+    redoHistory.push(getEditorStateSnapshot());
+    applyEditorStateSnapshot(previousState, { showRepetitionMessage: true });
+  }
+
+  function performRedo() {
+    const nextState = redoHistory.pop();
+    if (!nextState) return;
+
+    undoHistory.push(getEditorStateSnapshot());
+    applyEditorStateSnapshot(nextState, { showRepetitionMessage: true });
   }
 
   function setPlaybackButtonState(playing) {
@@ -403,7 +524,7 @@ document.addEventListener("DOMContentLoaded", () => {
     bpmInput.addEventListener("input", restartPlaybackTimer);
   }
 
-  // Global transport shortcut: space toggles play/pause and avoids grid button activation.
+  // Keyboard shortcuts: transport, grid navigation, and focus cleanup for UI controls.
   document.addEventListener("keydown", (event) => {
     const isSpace = event.key === " " || event.code === "Space";
     if (!isSpace) return;
@@ -426,17 +547,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     event.preventDefault();
-    if (
-      target instanceof HTMLElement &&
-      (
-        target.classList.contains("playback-toggle-button") ||
-        target.classList.contains("clear-button") ||
-        target.classList.contains("lock-checkbox") ||
-        target.classList.contains("step-cell") ||
-        target.classList.contains("constraint-slider") ||
-        target.classList.contains("instrument-label")
-      )
-    ) {
+    if (isKeyboardBlurTarget(target)) {
       target.blur();
     }
     togglePlayback();
@@ -573,7 +684,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const nextSnapshot = captureVisibleRepetitionOverrideSnapshot();
     if (!nextSnapshot || previousSnapshot === nextSnapshot) return;
 
-    showTemporaryTryMessage(getRepetitionAppliedMessage(), 4500);
+    showTemporaryTryMessage(getRepetitionAppliedMessage(), 4500, true);
   }
 
   function willStepBeDerived(stepIndex, level) {
@@ -728,7 +839,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!silent && shouldShowRepetitionMessage) {
       showTemporaryTryMessage(
         getRepetitionAppliedMessage(nextLevel),
-        4500
+        4500,
+        true
       );
     }
   }
@@ -813,6 +925,11 @@ document.addEventListener("DOMContentLoaded", () => {
     return "Try creating your own pattern freely.";
   }
 
+  function setTryThisAlertState(isAlert) {
+    if (!tryThisText) return;
+    tryThisText.classList.toggle("try-inline-text--alert", isAlert);
+  }
+
   function refreshPersistentTryMessage() {
     if (isOverDensityLimit) return;
 
@@ -820,6 +937,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (persistentTryMessage !== nextMessage) {
       persistentTryMessage = nextMessage;
       if (tryThisText && tryThisMessageTimeoutId === null) {
+        setTryThisAlertState(false);
         tryThisText.textContent = persistentTryMessage;
       }
     }
@@ -875,9 +993,10 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${meaning[level]}\n\n${policyText}`;
   }
 
-  function showTemporaryTryMessage(message, durationMs = 1500) {
+  function showTemporaryTryMessage(message, durationMs = 1500, isAlert = false) {
     if (!tryThisText) return;
 
+    setTryThisAlertState(isAlert);
     tryThisText.textContent = message;
 
     if (tryThisMessageTimeoutId !== null) {
@@ -885,6 +1004,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     tryThisMessageTimeoutId = window.setTimeout(() => {
+      setTryThisAlertState(isOverDensityLimit);
       tryThisText.textContent = persistentTryMessage;
       tryThisMessageTimeoutId = null;
     }, durationMs);
@@ -910,6 +1030,190 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 280);
   }
 
+  function tryActivateStepCell(stepCell, instrumentIndex, stepIndex) {
+    if (
+      stepIndex >= loopLength ||
+      instrumentIndex >= kitSize ||
+      !isStepAllowedByGridResolution(stepIndex)
+    ) {
+      return false;
+    }
+
+    if (isStepDerivedByRepetition(instrumentIndex, stepIndex)) {
+      return false;
+    }
+
+    if (pattern[instrumentIndex][stepIndex]) {
+      return false;
+    }
+
+    const compliance = getDensityComplianceState();
+    if (compliance.isOverLimit) {
+      triggerBlockedStepFeedback(stepCell);
+      showTemporaryTryMessage(
+        `Over density limit (${compliance.maxHits} max). Remove hits to add new ones.`,
+        3000,
+        true
+      );
+      return false;
+    }
+
+    if (Number.isFinite(compliance.maxHits) && compliance.hitCount >= compliance.maxHits) {
+      triggerBlockedStepFeedback(stepCell);
+      showTemporaryTryMessage(
+        `Density limit reached (${compliance.maxHits} max). Remove a hit to add another.`,
+        3000,
+        true
+      );
+      return false;
+    }
+
+    pattern[instrumentIndex][stepIndex] = true;
+    refreshEffectivePatternState();
+    savePatternToStorage();
+    updateDensityState();
+    gridInteractionDirty = true;
+    return true;
+  }
+
+  function beginGridInteractionSnapshot() {
+    if (!activeGridHistorySnapshot) {
+      activeGridHistorySnapshot = getEditorStateSnapshot();
+    }
+  }
+
+  function finalizeGridInteractionSnapshot() {
+    if (!activeGridHistorySnapshot) return;
+
+    if (gridInteractionDirty) {
+      pushUndoState(activeGridHistorySnapshot);
+    }
+
+    activeGridHistorySnapshot = null;
+    gridInteractionDirty = false;
+  }
+
+  function beginSliderInteractionSnapshot() {
+    if (!pendingSliderHistorySnapshot) {
+      pendingSliderHistorySnapshot = getEditorStateSnapshot();
+    }
+  }
+
+  function finalizeSliderInteractionSnapshot() {
+    if (!pendingSliderHistorySnapshot) return;
+
+    pushUndoState(pendingSliderHistorySnapshot);
+    pendingSliderHistorySnapshot = null;
+  }
+
+  function isTypingTarget(element) {
+    if (!element) return false;
+    if (element.isContentEditable) return true;
+
+    const tagName = element.tagName;
+    if (tagName === "TEXTAREA" || tagName === "SELECT") return true;
+    if (tagName !== "INPUT") return false;
+
+    const inputType = element.type;
+    return inputType !== "range" && inputType !== "checkbox" && inputType !== "button";
+  }
+
+  function isGridCellNavigable(instrumentIndex, stepIndex) {
+    return (
+      instrumentIndex >= 0 &&
+      instrumentIndex < kitSize &&
+      stepIndex >= 0 &&
+      stepIndex < loopLength &&
+      isStepAllowedByGridResolution(stepIndex) &&
+      !isStepDerivedByRepetition(instrumentIndex, stepIndex)
+    );
+  }
+
+  function getFirstNavigableGridCell() {
+    for (let instrumentIndex = 0; instrumentIndex < kitSize; instrumentIndex += 1) {
+      for (let stepIndex = 0; stepIndex < loopLength; stepIndex += 1) {
+        if (isStepAllowedByGridResolution(stepIndex)) {
+          return { instrumentIndex, stepIndex };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function normalizeSelectedGridCell() {
+    if (isGridCellNavigable(selectedInstrumentIndex, selectedStepIndex)) return;
+
+    const firstCell = getFirstNavigableGridCell();
+    if (!firstCell) return;
+
+    selectedInstrumentIndex = firstCell.instrumentIndex;
+    selectedStepIndex = firstCell.stepIndex;
+  }
+
+  function refreshKeyboardGridSelection() {
+    normalizeSelectedGridCell();
+
+    allStepCells.forEach((cell) => {
+      const instrumentIndex = Number(cell.dataset.instrument);
+      const stepIndex = Number(cell.dataset.step);
+      const isSelected =
+        isKeyboardGridSelectionVisible &&
+        instrumentIndex === selectedInstrumentIndex &&
+        stepIndex === selectedStepIndex &&
+        isGridCellNavigable(instrumentIndex, stepIndex);
+
+      cell.classList.toggle("step-cell--keyboard-selected", isSelected);
+    });
+  }
+
+  function setKeyboardGridSelection(instrumentIndex, stepIndex) {
+    if (!isGridCellNavigable(instrumentIndex, stepIndex)) return false;
+
+    selectedInstrumentIndex = instrumentIndex;
+    selectedStepIndex = stepIndex;
+    refreshKeyboardGridSelection();
+    return true;
+  }
+
+  function moveKeyboardGridSelection(stepDelta, instrumentDelta) {
+    normalizeSelectedGridCell();
+
+    if (stepDelta !== 0) {
+      let nextStepIndex = selectedStepIndex + stepDelta;
+      while (nextStepIndex >= 0 && nextStepIndex < loopLength) {
+        if (isGridCellNavigable(selectedInstrumentIndex, nextStepIndex)) {
+          return setKeyboardGridSelection(selectedInstrumentIndex, nextStepIndex);
+        }
+        nextStepIndex += stepDelta;
+      }
+      return false;
+    }
+
+    if (instrumentDelta !== 0) {
+      const nextInstrumentIndex = selectedInstrumentIndex + instrumentDelta;
+      if (!isGridCellNavigable(nextInstrumentIndex, selectedStepIndex)) return false;
+      return setKeyboardGridSelection(nextInstrumentIndex, selectedStepIndex);
+    }
+
+    return false;
+  }
+
+  function isKeyboardBlurTarget(element) {
+    if (!(element instanceof HTMLElement)) return false;
+
+    return (
+      element.classList.contains("playback-toggle-button") ||
+      element.classList.contains("clear-button") ||
+      element.classList.contains("lock-checkbox") ||
+      element.classList.contains("step-cell") ||
+      element.classList.contains("constraint-slider") ||
+      element.classList.contains("instrument-label") ||
+      element.classList.contains("metronome-toggle-button") ||
+      element.classList.contains("constraints-reset-button")
+    );
+  }
+
   function refreshEffectivePatternState() {
     allStepCells.forEach((cell) => {
       const instrumentIndex = Number(cell.dataset.instrument);
@@ -931,6 +1235,8 @@ document.addEventListener("DOMContentLoaded", () => {
       cell.classList.toggle("step-cell--guidance-ghost", isGuidanceGhost);
       cell.classList.toggle("step-cell--guidance-column", isGuidanceColumnHighlight);
     });
+
+    refreshKeyboardGridSelection();
   }
 
   function updateDensityState() {
@@ -957,6 +1263,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (persistentTryMessage !== nextMessage) {
         persistentTryMessage = nextMessage;
         if (tryThisText && tryThisMessageTimeoutId === null) {
+          setTryThisAlertState(true);
           tryThisText.textContent = persistentTryMessage;
         }
       }
@@ -1045,6 +1352,13 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
+    function clearActiveInstrument() {
+      instrumentButtons.forEach((button) => {
+        button.classList.remove("instrument--active");
+        button.setAttribute("aria-pressed", "false");
+      });
+    }
+
     function createInstrumentLabel(instrument, instrumentIndex) {
       const label = document.createElement("button");
       label.type = "button";
@@ -1057,6 +1371,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (instrumentIndex >= kitSize) return;
         setActiveInstrument(instrumentIndex);
         auditionInstrument(instrumentIndex);
+        window.setTimeout(clearActiveInstrument, 140);
       });
       instrumentButtons.push(label);
       return label;
@@ -1080,7 +1395,50 @@ document.addEventListener("DOMContentLoaded", () => {
         stepButton.setAttribute("aria-pressed", "true");
       }
 
+      stepButton.addEventListener("mousedown", (event) => {
+        if (event.button !== 0) return;
+
+        setKeyboardGridSelection(instrumentIndex, stepIndex);
+        beginGridInteractionSnapshot();
+        isGridPointerDown = true;
+        isGridDragPlacing = false;
+        pendingDragStartCell = { stepButton, instrumentIndex, stepIndex };
+      });
+
+      stepButton.addEventListener("mouseenter", () => {
+        if (!isGridPointerDown) return;
+
+        const startedElsewhere =
+          pendingDragStartCell &&
+          (
+            pendingDragStartCell.instrumentIndex !== instrumentIndex ||
+            pendingDragStartCell.stepIndex !== stepIndex
+          );
+
+        if (startedElsewhere) {
+          isGridDragPlacing = true;
+          suppressNextGridClick = true;
+          tryActivateStepCell(
+            pendingDragStartCell.stepButton,
+            pendingDragStartCell.instrumentIndex,
+            pendingDragStartCell.stepIndex
+          );
+          pendingDragStartCell = null;
+        }
+
+        if (isGridDragPlacing) {
+          tryActivateStepCell(stepButton, instrumentIndex, stepIndex);
+        }
+      });
+
       stepButton.addEventListener("click", () => {
+        if (suppressNextGridClick) {
+          suppressNextGridClick = false;
+          return;
+        }
+
+        setKeyboardGridSelection(instrumentIndex, stepIndex);
+
         if (
           stepIndex >= loopLength ||
           instrumentIndex >= kitSize ||
@@ -1096,35 +1454,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const isCurrentlyActive = pattern[instrumentIndex][stepIndex];
         if (!isCurrentlyActive) {
-          const compliance = getDensityComplianceState();
-          if (compliance.isOverLimit) {
-            triggerBlockedStepFeedback(stepButton);
-            showTemporaryTryMessage(
-              `Over density limit (${compliance.maxHits} max). Remove hits to add new ones.`,
-              3000
-            );
-            return;
-          }
-
-          if (Number.isFinite(compliance.maxHits) && compliance.hitCount >= compliance.maxHits) {
-            triggerBlockedStepFeedback(stepButton);
-            showTemporaryTryMessage(
-              `Density limit reached (${compliance.maxHits} max). Remove a hit to add another.`,
-              3000
-            );
-            return;
-          }
+          tryActivateStepCell(stepButton, instrumentIndex, stepIndex);
+          return;
         }
 
-        pattern[instrumentIndex][stepIndex] = !isCurrentlyActive;
-        const isActive = pattern[instrumentIndex][stepIndex];
+        pattern[instrumentIndex][stepIndex] = false;
         refreshEffectivePatternState();
         savePatternToStorage();
         updateDensityState();
-
-        if (isActive) {
-          auditionInstrument(instrumentIndex);
-        }
+        gridInteractionDirty = true;
       });
 
       stepCellsByColumn[stepIndex].push(stepButton);
@@ -1168,11 +1506,42 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     sequencerMount.appendChild(numberRow);
-    setActiveInstrument(0);
+    clearActiveInstrument();
   }
+
+  document.addEventListener("mouseup", () => {
+    const shouldResetSuppressedClick = isGridDragPlacing;
+    isGridPointerDown = false;
+    isGridDragPlacing = false;
+    pendingDragStartCell = null;
+
+    if (shouldResetSuppressedClick) {
+      window.setTimeout(() => {
+        suppressNextGridClick = false;
+      }, 0);
+    }
+
+    window.setTimeout(() => {
+      finalizeGridInteractionSnapshot();
+    }, 0);
+  });
+
+  document.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    if (!isKeyboardGridSelectionVisible) return;
+
+    isKeyboardGridSelectionVisible = false;
+    refreshKeyboardGridSelection();
+  });
 
   if (clearPatternButton) {
     clearPatternButton.addEventListener("click", () => {
+      if (!window.confirm("Are you sure you want to clear the pattern?")) {
+        return;
+      }
+
+      const previousState = getEditorStateSnapshot();
+
       pattern.forEach((row) => row.fill(false));
 
       allStepCells.forEach((cell) => {
@@ -1184,6 +1553,7 @@ document.addEventListener("DOMContentLoaded", () => {
       savePatternToStorage();
       refreshEffectivePatternState();
       updateDensityState();
+      pushUndoState(previousState);
     });
   }
 
@@ -1237,11 +1607,19 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Per-slider input handling: update labels, refresh current constraint state and guidance cues, and persist values.
+  // Per-slider input handling: update labels, refresh current constraint/guidance state, and persist undoable values.
   loadConstraintValuesFromStorage();
 
   constraintSliders.forEach((slider, index) => {
     updateSliderLabel(index, slider.value);
+
+    slider.addEventListener("pointerdown", () => {
+      beginSliderInteractionSnapshot();
+    });
+
+    slider.addEventListener("focus", () => {
+      beginSliderInteractionSnapshot();
+    });
 
     slider.addEventListener("input", () => {
       if (lockSlidersCheckbox.checked) {
@@ -1276,10 +1654,24 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       saveConstraintValuesToStorage();
     });
+
+    slider.addEventListener("change", () => {
+      finalizeSliderInteractionSnapshot();
+    });
+
+    slider.addEventListener("blur", () => {
+      finalizeSliderInteractionSnapshot();
+    });
   });
 
   if (resetConstraintsButton) {
     resetConstraintsButton.addEventListener("click", () => {
+      if (!window.confirm("Are you sure you want to reset all constraints?")) {
+        return;
+      }
+
+      const previousState = getEditorStateSnapshot();
+
       constraintSliders.forEach((slider, index) => {
         slider.value = slider.defaultValue;
         updateSliderLabel(index, slider.value);
@@ -1291,6 +1683,7 @@ document.addEventListener("DOMContentLoaded", () => {
       updateGuidanceState({ silent: true });
       updateRepetitionState({ silent: true });
       saveConstraintValuesToStorage();
+      pushUndoState(previousState);
     });
   }
 
@@ -1325,5 +1718,86 @@ document.addEventListener("DOMContentLoaded", () => {
   updateKitSizeState({ silent: true });
   updateGuidanceState({ silent: true });
   updateRepetitionState({ silent: true });
+
+  document.addEventListener("keydown", (event) => {
+    if (isTypingTarget(document.activeElement)) return;
+
+    const navigationKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter"]);
+    if (!navigationKeys.has(event.key)) return;
+
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      isKeyboardGridSelectionVisible = true;
+      moveKeyboardGridSelection(-1, 0);
+      return;
+    }
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      isKeyboardGridSelectionVisible = true;
+      moveKeyboardGridSelection(1, 0);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      isKeyboardGridSelectionVisible = true;
+      moveKeyboardGridSelection(0, -1);
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      isKeyboardGridSelectionVisible = true;
+      moveKeyboardGridSelection(0, 1);
+      return;
+    }
+
+    normalizeSelectedGridCell();
+    const selectedCell = stepCellsByInstrument[selectedInstrumentIndex]?.[selectedStepIndex];
+    if (!selectedCell || !isGridCellNavigable(selectedInstrumentIndex, selectedStepIndex)) return;
+
+    event.preventDefault();
+    isKeyboardGridSelectionVisible = true;
+    refreshKeyboardGridSelection();
+    selectedCell.click();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const target = document.activeElement;
+    if (!isKeyboardBlurTarget(target) || isTypingTarget(target)) return;
+
+    if (["Shift", "Control", "Alt", "Meta", "CapsLock", "Tab"].includes(event.key)) {
+      return;
+    }
+
+    target.blur();
+
+    if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (isTypingTarget(document.activeElement)) return;
+
+    const isUndoShortcut = (isMacPlatform && event.metaKey && !event.shiftKey && event.key.toLowerCase() === "z") ||
+      (!isMacPlatform && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "z");
+    const isRedoShortcut = (isMacPlatform && event.metaKey && event.shiftKey && event.key.toLowerCase() === "z") ||
+      (!isMacPlatform && event.ctrlKey && event.key.toLowerCase() === "y");
+
+    if (!isUndoShortcut && !isRedoShortcut) return;
+
+    event.preventDefault();
+
+    if (isUndoShortcut) {
+      performUndo();
+      return;
+    }
+
+    performRedo();
+  });
 });
 
