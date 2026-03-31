@@ -205,6 +205,11 @@ body {
   white-space: nowrap;
 }
 
+.try-inline-text--alert {
+  color: #ffb0a8;
+  font-weight: 600;
+}
+
 .clear-button {
   background: transparent;
   color: var(--text);
@@ -320,7 +325,9 @@ body {
 }
 
 .instrument-label:hover {
-  border-color: #4b5870;
+  border-color: var(--accent);
+  background: #1b2432;
+  color: #cfe5ff;
 }
 
 .instrument-label:focus-visible {
@@ -342,6 +349,7 @@ body {
   border-color: var(--accent);
   background: #1b2432;
   color: #cfe5ff;
+  box-shadow: 0 0 0 1px rgba(121, 183, 255, 0.45);
 }
 
 .instrument-label--locked {
@@ -392,6 +400,11 @@ body {
 .step-cell--playhead {
   border-color: #8fb8f2;
   box-shadow: inset 0 0 0 1px rgba(143, 184, 242, 0.35);
+}
+
+.step-cell--keyboard-selected {
+  outline: 2px solid #d9e7fb;
+  outline-offset: 1px;
 }
 
 .step-cell--locked {
@@ -798,5 +811,10 @@ body {
 .instrument-label.has-tooltip:hover::after,
 .instrument-label.has-tooltip:focus-visible::after {
   transition-delay: 0.5s;
+}
+
+.lock-label.has-tooltip:hover::after,
+.lock-label.has-tooltip:focus-visible::after {
+  transition-delay: 1s;
 }
 
