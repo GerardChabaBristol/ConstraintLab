@@ -743,6 +743,13 @@ body {
   gap: 0.6rem;
 }
 
+.constraints-action-group {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: auto;
+}
+
 .lock-label {
   display: inline-flex;
   align-items: center;

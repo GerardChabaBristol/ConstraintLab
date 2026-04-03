@@ -17,6 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const metronomeToggleButton = document.getElementById("metronomeToggleButton");
   const clearPatternButton = document.getElementById("clearPatternButton");
   const resetConstraintsButton = document.getElementById("resetConstraintsButton");
+  const endSessionButton = document.getElementById("endSessionButton");
   const tryThisText = document.getElementById("try-this-text");
   const baseTryThisMessage = tryThisText ? tryThisText.textContent : "";
   const constraintSliders = Array.from(document.querySelectorAll(".constraint-slider"));
@@ -169,6 +170,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const undoHistory = [];
   const redoHistory = [];
   const isMacPlatform = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+  let sessionStartTimestamp = Date.now();
+  let sessionConstraintChangeLog = [];
 
   // Persist only the step matrix so edits survive reloads until the user clears them.
   function savePatternToStorage() {
@@ -249,6 +252,123 @@ document.addEventListener("DOMContentLoaded", () => {
     return constraintSliders.map((slider) => slider.value);
   }
 
+  function getConstraintName(index) {
+    if (index === LOOP_LENGTH_SLIDER_INDEX) return "Loop Length";
+    if (index === GRID_RESOLUTION_SLIDER_INDEX) return "Grid Resolution";
+    if (index === DENSITY_SLIDER_INDEX) return "Density";
+    if (index === KIT_SIZE_SLIDER_INDEX) return "Kit Size";
+    if (index === GUIDANCE_SLIDER_INDEX) return "Guidance";
+    if (index === REPETITION_SLIDER_INDEX) return "Repetition";
+    return `Constraint ${index + 1}`;
+  }
+
+  function formatConstraintValue(index, value) {
+    if (index === LOOP_LENGTH_SLIDER_INDEX) {
+      return String(readLoopLengthFromSliderValue(value));
+    }
+
+    if (index === GRID_RESOLUTION_SLIDER_INDEX) {
+      const level = readGridResolutionFromSliderValue(value);
+      return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
+    }
+
+    if (index === DENSITY_SLIDER_INDEX) {
+      const level = readDensityLevelFromSliderValue(value);
+      return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
+    }
+
+    if (index === KIT_SIZE_SLIDER_INDEX) {
+      return String(readKitSizeFromSliderValue(value));
+    }
+
+    if (index === GUIDANCE_SLIDER_INDEX) {
+      const level = readGuidanceLevelFromSliderValue(value);
+      return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
+    }
+
+    if (index === REPETITION_SLIDER_INDEX) {
+      const level = readRepetitionLevelFromSliderValue(value);
+      return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
+    }
+
+    return String(value);
+  }
+
+  function formatElapsedSessionTime(elapsedMs) {
+    const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    const minutes = Math.floor(elapsedSeconds / 60);
+    const seconds = elapsedSeconds % 60;
+    const minuteLabel = minutes === 1 ? "min" : "mins";
+    const secondLabel = seconds === 1 ? "sec" : "secs";
+    return `${minutes} ${minuteLabel} ${seconds} ${secondLabel}`;
+  }
+
+  // Keep a local session log of finalized constraint changes, then export it as a text file on demand.
+  function logConstraintChanges(previousValues, nextValues, sourceLabel = "") {
+    if (!Array.isArray(previousValues) || !Array.isArray(nextValues)) return;
+
+    const elapsedMs = Date.now() - sessionStartTimestamp;
+
+    previousValues.forEach((previousValue, index) => {
+      const nextValue = nextValues[index];
+      if (nextValue === undefined || previousValue === nextValue) return;
+
+      sessionConstraintChangeLog.push({
+        elapsedMs,
+        constraintName: getConstraintName(index),
+        fromValue: formatConstraintValue(index, previousValue),
+        toValue: formatConstraintValue(index, nextValue),
+        sourceLabel,
+      });
+    });
+  }
+
+  function buildSessionLogText() {
+    const sessionEndTimestamp = Date.now();
+    const sessionDuration = sessionEndTimestamp - sessionStartTimestamp;
+    const lines = [
+      "ConstraintLab Session Log",
+      `Session started: ${new Date(sessionStartTimestamp).toLocaleString()}`,
+      `Session ended: ${new Date(sessionEndTimestamp).toLocaleString()}`,
+      `Duration: ${formatElapsedSessionTime(sessionDuration)}`,
+      "",
+    ];
+
+    if (sessionConstraintChangeLog.length === 0) {
+      lines.push("No constraint changes recorded.");
+      return lines.join("\n");
+    }
+
+    sessionConstraintChangeLog.forEach((entry) => {
+      const sourceSuffix = entry.sourceLabel ? ` (${entry.sourceLabel})` : "";
+      lines.push(
+        `[${formatElapsedSessionTime(entry.elapsedMs)}] ${entry.constraintName}: ${entry.fromValue} -> ${entry.toValue}${sourceSuffix}`
+      );
+    });
+
+    return lines.join("\n");
+  }
+
+  function downloadSessionLog() {
+    const logContents = buildSessionLogText();
+    const blob = new Blob([logContents], { type: "text/plain;charset=utf-8" });
+    const downloadLink = document.createElement("a");
+    const objectUrl = window.URL.createObjectURL(blob);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+    downloadLink.href = objectUrl;
+    downloadLink.download = `constraintlab-session-${timestamp}.txt`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
+    window.URL.revokeObjectURL(objectUrl);
+  }
+
+  function startNewConstraintSession() {
+    sessionStartTimestamp = Date.now();
+    sessionConstraintChangeLog = [];
+  }
+
   function getEditorStateSnapshot() {
     return {
       pattern: clonePatternState(),
@@ -291,9 +411,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function applyEditorStateSnapshot(stateSnapshot, options = {}) {
     if (!stateSnapshot) return;
-    const { showRepetitionMessage = false } = options;
+    const { showRepetitionMessage = false, historySource = "" } = options;
     const previousRepetitionLevel = repetitionLevel;
     const previousVisiblePattern = captureVisibleEffectivePatternSignature();
+    const previousConstraintValues = cloneConstraintState();
 
     pattern.forEach((row, instrumentIndex) => {
       row.forEach((_, stepIndex) => {
@@ -320,6 +441,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateDensityState();
     savePatternToStorage();
     saveConstraintValuesToStorage();
+    logConstraintChanges(previousConstraintValues, cloneConstraintState(), historySource);
 
     const nextRepetitionLevel = repetitionLevel;
     const nextVisiblePattern = captureVisibleEffectivePatternSignature();
@@ -338,7 +460,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!previousState) return;
 
     redoHistory.push(getEditorStateSnapshot());
-    applyEditorStateSnapshot(previousState, { showRepetitionMessage: true });
+    applyEditorStateSnapshot(previousState, { showRepetitionMessage: true, historySource: "Undo" });
   }
 
   function performRedo() {
@@ -346,7 +468,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!nextState) return;
 
     undoHistory.push(getEditorStateSnapshot());
-    applyEditorStateSnapshot(nextState, { showRepetitionMessage: true });
+    applyEditorStateSnapshot(nextState, { showRepetitionMessage: true, historySource: "Redo" });
   }
 
   function setPlaybackButtonState(playing) {
@@ -1102,7 +1224,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function finalizeSliderInteractionSnapshot() {
     if (!pendingSliderHistorySnapshot) return;
 
+    const previousConstraintValues = pendingSliderHistorySnapshot.sliders.slice();
+    const nextConstraintValues = cloneConstraintState();
     pushUndoState(pendingSliderHistorySnapshot);
+    logConstraintChanges(previousConstraintValues, nextConstraintValues);
     pendingSliderHistorySnapshot = null;
   }
 
@@ -1684,6 +1809,14 @@ document.addEventListener("DOMContentLoaded", () => {
       updateRepetitionState({ silent: true });
       saveConstraintValuesToStorage();
       pushUndoState(previousState);
+      logConstraintChanges(previousState.sliders, cloneConstraintState(), "Reset Defaults");
+    });
+  }
+
+  if (endSessionButton) {
+    endSessionButton.addEventListener("click", () => {
+      downloadSessionLog();
+      startNewConstraintSession();
     });
   }
 
